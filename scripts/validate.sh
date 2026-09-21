@@ -41,37 +41,10 @@ for script in "$ROOT_DIR"/scripts/*.sh "$ROOT_DIR"/tests/*.sh; do
     fi
 done
 
-read_env_value() {
-    local env_file="$1" name="$2"
-    awk -F= -v key="$name" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$env_file"
-}
-
 validate_image_pin() {
     local env_file="$1" name="$2"
     if ! grep -Eq "^${name}=.+@sha256:[0-9a-fA-F]{64}$" "$env_file"; then
         fail "${env_file#"$ROOT_DIR"/}: ${name} must be a digest-pinned image"
-    fi
-}
-
-validate_token_file() {
-    local role="$1" env_file="$2" token_path token_file mode
-    token_path="$(read_env_value "$env_file" CLOUDFLARED_TOKEN_FILE)"
-    [[ -n "$token_path" ]] || {
-        fail "${role}/images.env: CLOUDFLARED_TOKEN_FILE is required"
-        return
-    }
-    if [[ "$token_path" = /* ]]; then
-        token_file="$token_path"
-    else
-        token_file="$ROOT_DIR/$role/${token_path#./}"
-    fi
-    [[ -f "$token_file" ]] || {
-        fail "${role}: Cloudflare token file is missing"
-        return
-    }
-    if [[ "$token_file" != *.example ]]; then
-        mode="$(stat -c '%a' "$token_file")"
-        [[ "$mode" == 600 ]] || fail "${role}: Cloudflare token file must be mode 600"
     fi
 }
 
@@ -121,10 +94,6 @@ validate_compose() {
             continue
         }
         validate_image_pin "$env_file" NETDATA_IMAGE
-        if [[ "$role" == parent ]]; then
-            validate_image_pin "$env_file" CLOUDFLARED_IMAGE
-            validate_token_file "$role" "$env_file"
-        fi
         if ! docker compose --env-file "$env_file" -f "$compose_file" config >/dev/null; then
             fail "docker compose config: ${role}"
         fi
@@ -144,8 +113,8 @@ validate_security_invariants() {
             fail "forbidden privilege, socket, AppArmor override, or published port: ${compose_file#"$ROOT_DIR"/}"
         fi
     done
-    if [[ -f "$ROOT_DIR/child/compose.yaml" ]] && grep -q cloudflared "$ROOT_DIR/child/compose.yaml"; then
-        fail 'Child Compose must not contain cloudflared'
+    if grep -Eq '(^|[[:space:]])cloudflared([[:space:]:]|$)' "$ROOT_DIR/parent/compose.yaml" "$ROOT_DIR/child/compose.yaml"; then
+        fail 'Compose files must not contain cloudflared; use the native Gateway service'
     fi
 }
 

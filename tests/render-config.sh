@@ -20,7 +20,7 @@ fi
 parent_netdata="$NETDATA_RUNTIME_ROOT/parent/netdata.conf"
 parent_stream="$NETDATA_RUNTIME_ROOT/parent/stream.conf"
 grep -Fq 'hostname = ai-agent-test' "$parent_netdata"
-grep -Fq '127.0.0.1:19999=dashboard 192.0.2.10:19998=streaming' "$parent_netdata"
+grep -Fq '192.0.2.10:19999=dashboard 192.0.2.10:19998=streaming' "$parent_netdata"
 grep -Fq '[11111111-2222-3333-4444-555555555555]' "$parent_stream"
 grep -Fq 'allow from = 192.0.2.20' "$parent_stream"
 

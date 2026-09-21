@@ -34,27 +34,11 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /var/log:/host/var/log:ro
       - /run/dbus:/run/dbus:ro
-
-  cloudflared:
-    image: ${CLOUDFLARED_IMAGE:?CLOUDFLARED_IMAGE is required}
-    container_name: cloudflared-netdata
-    network_mode: host
-    restart: unless-stopped
-    read_only: true
-    cap_drop:
-      - ALL
-    secrets:
-      - tunnel-token
-    command:
-      - tunnel
-      - --no-autoupdate
-      - run
-      - --token-file
-      - /run/secrets/tunnel-token
-
-secrets:
-  tunnel-token:
-    file: ${CLOUDFLARED_TOKEN_FILE:?CLOUDFLARED_TOKEN_FILE is required}
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/sbin/netdatacli ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
 volumes:
   netdata-lib:

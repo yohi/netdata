@@ -7,10 +7,10 @@ Issue #1の要件に基づく、Docker Composeで再生成可能なNetdata Paren
 ```text
 Cloudflare Access
         |
-Cloudflare Tunnel -> http://127.0.0.1:19999
+Cloudflare Tunnel -> http://192.168.1.102:19999
         |
 AI-PC: netdata-parent
-  127.0.0.1:19999 = dashboard
+  192.168.1.102:19999 = dashboard (Gateway-only)
   AI-PC LAN IP:19998 = streaming
         ^
         | TCP/19998, Gateway LAN IP only
@@ -18,13 +18,13 @@ Gateway PC: netdata-child
   dashboard disabled
 ```
 
-Parentだけがmetrics DBとcloudflaredを持ちます。GatewayはChildとしてローカルmetricsを収集し、宅内LAN経由でParentへ送信します。Gatewayにcloudflared、reverse proxy、公開Web UI、Docker socket、中央DBは配置しません。
+Parentだけがmetrics DBを持ちます。GatewayはChildとしてローカルmetricsを収集し、宅内LAN経由でParentへ送信します。Cloudflare TunnelはGatewayの既存native `cloudflared` serviceが担当し、AI-PCにはcloudflaredを配置しません。Gateway上のChild Web UI、reverse proxy、Docker socket、中央DBは配置しません。
 
 ## Quick Start
 
 1. 対象ホストへこのリポジトリを配置します。ParentとChildはそれぞれ別ホストで実行します。
 2. `parent/images.env.example`または`child/images.env.example`を`images.env`へコピーし、digestとパスを確認します。
-3. ParentではCloudflare Tunnel tokenを`parent/secrets/cloudflared-token`へ配置し、modeを`600`にします。サンプルファイルは検証用であり、実際のtokenではありません。
+3. Gateway native `cloudflared`のTunnel originを`http://192.168.1.102:19999`へ設定し、Access policyを先に確認します。
 4. Streaming API keyを安全なファイルへ生成し、`scripts/render-config.sh`でruntime configを生成します。生成ファイルとkeyはGitへ追加しません。
 5. `scripts/validate.sh`で静的検証を行い、各Composeで`docker compose config`を実行します。
 6. `docs/deployment.md`の手順でParent、Child、Firewall、Cloudflare Accessを順に構成します。
@@ -37,7 +37,7 @@ parent/
   images.env.example
   config/*.tmpl
   runtime/                 # generated, ignored
-  secrets/                 # local only, ignored
+  secrets/                 # streaming key only, local and ignored
 child/
   compose.yaml
   images.env.example

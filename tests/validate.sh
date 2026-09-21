@@ -30,6 +30,18 @@ if ! grep -Eq 'netdatacli[[:space:]]+ping' "$ROOT_DIR/child/compose.yaml"; then
     exit 1
 fi
 
+if ! grep -Eq 'netdatacli[[:space:]]+ping' "$ROOT_DIR/parent/compose.yaml"; then
+    printf '%s\n' 'parent healthcheck must use netdatacli ping when dashboard binds to LAN' >&2
+    exit 1
+fi
+
+for compose_file in "$ROOT_DIR/parent/compose.yaml" "$ROOT_DIR/child/compose.yaml"; do
+    if grep -Eq '(^|[[:space:]])cloudflared([[:space:]:]|$)' "$compose_file"; then
+        printf 'cloudflared service must not be defined: %s\n' "$compose_file" >&2
+        exit 1
+    fi
+done
+
 invalid_digest_root="$TEST_ROOT/invalid-digest"
 copy_fixture "$invalid_digest_root"
 sed -i 's/^NETDATA_IMAGE=.*/NETDATA_IMAGE=invalid/' "$invalid_digest_root/parent/images.env.example"
@@ -43,18 +55,6 @@ copy_fixture "$invalid_placeholder_root"
 sed -i 's/__NETDATA_HOSTNAME__/__UNKNOWN_PLACEHOLDER__/g' "$invalid_placeholder_root/parent/config/netdata.conf.tmpl"
 if VALIDATE_ROOT="$invalid_placeholder_root" bash "$ROOT_DIR/scripts/validate.sh" --examples; then
     printf '%s\n' 'unresolved template placeholder was accepted' >&2
-    exit 1
-fi
-
-invalid_mode_root="$TEST_ROOT/invalid-mode"
-copy_fixture "$invalid_mode_root"
-cp "$invalid_mode_root/parent/images.env.example" "$invalid_mode_root/parent/images.env"
-cp "$invalid_mode_root/child/images.env.example" "$invalid_mode_root/child/images.env"
-printf '%s\n' 'not-a-real-token' > "$invalid_mode_root/parent/secrets/cloudflared-token"
-chmod 644 "$invalid_mode_root/parent/secrets/cloudflared-token"
-sed -i 's#cloudflared-token.example#cloudflared-token#' "$invalid_mode_root/parent/images.env"
-if VALIDATE_ROOT="$invalid_mode_root" bash "$ROOT_DIR/scripts/validate.sh" --deployment; then
-    printf '%s\n' 'insecure token file mode was accepted' >&2
     exit 1
 fi
 
