@@ -2,7 +2,7 @@
 
 ## Scope
 
-Issue #1 の初期実装として、AI-PC上のNetdata ParentとGateway上のNetdata Childを、Docker Composeで再生成可能な形にする。外部Cloudflare設定やGateway実機の変更は行わず、必要な手順と検証項目をリポジトリへ含める。
+Issue #1 の初期実装として、AI-PC上のNetdata ParentとGateway上のNetdata Childを、Docker Composeで再生成可能な形にする。Cloudflare TunnelはGatewayの既存native serviceを使用し、AI-PCへcloudflaredを追加しない。詳細な変更設計は`gateway-native-cloudflared-design.md`に記録する。
 
 ## Options
 
@@ -22,12 +22,12 @@ SocketをNetdataへ直接渡さず、`/containers` APIだけをproxyする。安
 
 ## Architecture
 
-- `parent/compose.yaml` はNetdata Parentとcloudflaredを定義する。
-- `child/compose.yaml` はNetdata Childだけを定義する。Gatewayにcloudflared、reverse proxy、公開Web UI、中央DBを置かない。
-- ParentのNetdataはhost PID/network namespaceを使い、`127.0.0.1:19999=dashboard`と`PARENT_LAN_IP:19998=streaming`を現行の`[web].bind to`構文で分離する。
+- `parent/compose.yaml` はNetdata Parentだけを定義する。cloudflaredはCompose管理しない。
+- `child/compose.yaml` はNetdata Childだけを定義する。Gatewayのnative cloudflared以外にreverse proxy、公開Web UI、中央DBを置かない。
+- ParentのNetdataはhost PID/network namespaceを使い、`PARENT_LAN_IP:19999=dashboard`と`PARENT_LAN_IP:19998=streaming`を現行の`[web].bind to`構文で分離する。FirewallはGateway IPだけを許可する。
 - Childは`[web] mode = none`とし、短期のdbengineを保持してParentへ再接続する。
 - Parent/Childのstream.confはAPI keyと送信元IPを含むため、`.tmpl`だけをGit管理し、`scripts/render-config.sh`が秘密ファイルからruntime configを生成する。
-- cloudflaredはremotely-managed Tunnelのtoken fileを`/run/secrets/tunnel-token`へ渡し、host networkで`http://127.0.0.1:19999`へ接続する。Public hostnameとAccess policyの変更はCloudflare側の手動手順にする。
+- Gateway native cloudflaredはhost networkで`http://192.168.1.102:19999`へ接続する。Public hostnameとAccess policyの変更はCloudflare側の手動手順にする。
 - イメージは`images.env`でdigestを指定し、`images.env.example`にはplaceholderだけを置く。
 
 ## Mounts and Capabilities
@@ -37,7 +37,7 @@ SocketをNetdataへ直接渡さず、`/containers` APIだけをproxyする。安
 - Netdata serviceは`CHOWN`、`DAC_OVERRIDE`、`FOWNER`、`SETUID`、`SETGID`をimage初期化用に、`SYS_PTRACE`と`SYS_ADMIN`をcollector用に採用する。`security.md`に各理由を記録し、`apparmor=unconfined`は採用しない。
 - `read_only: true`で必要なruntime directoryはNetdata serviceの`tmpfs: /run`へ置く。
 - `/var/run/docker.sock`はmountしない。Docker固有metricsの不足は検証結果と将来のproxy設計に記録する。
-- cloudflaredは追加capabilityなし、read-only root filesystem、token secret mountだけとする。
+- Gateway native cloudflaredのsystemd unitとtokenはGateway側のroot-only管理とし、AI-PC Composeへ持ち込まない。
 
 ## Retention and Streaming
 
@@ -51,7 +51,7 @@ SocketをNetdataへ直接渡さず、`/containers` APIだけをproxyする。安
 - `docker compose --env-file images.env config`をParent/Childで実行する。
 - shellcheckが存在する場合は全shell scriptを検査し、常に`bash -n`を実行する。
 - templateのplaceholder、必須env、secret file mode、Git追跡状態を検査する。
-- 実機が利用できないため、container health、HTTP bind、streaming、Access、recreate、reboot、RAPL chart、hwmon chart、NVMe chartは実測せず、`NOT VERIFIED`または`BLOCKED`とする。
+- 実機検証ではcontainer health、HTTP bind、streamingを実測し、Cloudflare origin変更、Gateway-only firewall、Access認証、reboot、RAPL chart、hwmon chartは未検証として記録する。
 - 現在のAI-PCで確認済みのRAPL/hwmon/NVMe capabilityはpreflight evidenceとして記録するが、Netdata chart生成のPASSとは扱わない。
 
 ## Official References

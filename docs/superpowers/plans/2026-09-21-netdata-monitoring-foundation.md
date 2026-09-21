@@ -1,5 +1,7 @@
 # Netdata Monitoring Foundation Implementation Plan
 
+> Superseded by `docs/superpowers/plans/2026-09-21-gateway-native-cloudflared.md`. Do not execute the Parent cloudflared steps in this historical plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Issue #1のParent/Child Netdata監視基盤を、秘密情報を含めずDocker Composeから再生成できる状態にする。

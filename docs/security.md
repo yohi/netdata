@@ -5,8 +5,8 @@
 - Netdata dashboardはhost loopbackだけで待ち受け、LAN/Internetへ直接公開しない。
 - Netdata streamingはParent LAN IPのTCP/19998だけで、Child API keyとGateway IP制限を併用する。
 - 外部Web UIはCloudflare Accessを先に通過したCloudflare Tunnelだけを使う。
-- Gatewayにはcloudflared、reverse proxy、公開Web UI、Parent DBを配置しない。
-- Tunnel tokenとstreaming API keyはGit管理せず、root-only fileとCompose secret/runtime configで扱う。
+- Gatewayのnative `cloudflared`だけがCloudflare Tunnel connectorを担当し、reverse proxy、公開Child Web UI、Parent DBは配置しない。
+- Gateway Tunnel tokenとstreaming API keyはGit管理せず、それぞれGatewayのroot-only native service管理とCompose runtime configで扱う。
 
 ## Capabilities
 
@@ -46,14 +46,14 @@ Netdata writable dataは`/var/lib/netdata`、`/var/cache/netdata`、`/var/log/ne
 
 ## Cloudflare Access and Direct Access
 
-Access applicationを作成する前にpublic hostnameを有効化しない。Tunnel originは`http://127.0.0.1:19999`で、Netdata側でTLS terminationしない。AI-PCのInbound Internet TCP/19998・19999は開放しない。
+Access applicationを作成する前にpublic hostnameを有効化しない。Tunnel originはGatewayから到達する`http://192.168.1.102:19999`で、Netdata側でTLS terminationしない。AI-PCのInbound Internet TCP/19998・19999はGateway source以外へ開放しない。
 
 Parentのbind設定、host firewall、Cloudflare Accessを別々の防御層として扱う。Tunnel停止時は外部UIだけが停止し、Parent local collectionとChild LAN streamingは独立して継続する設計とする。この故障分離は実機試験完了までPASSとしない。
 
 ## Secret Handling
 
-- `parent/secrets/cloudflared-token`、`*/secrets/stream-api-key`、`*/runtime/*.conf`、`images.env`はGit ignore対象。
-- token fileはmode `600`を要求する。
+- `*/secrets/stream-api-key`、`*/runtime/*.conf`、`images.env`はGit ignore対象。Gateway native Tunnel tokenはAI-PCへ配置しない。
+- native Tunnel tokenはGateway側でmode `600`相当のroot-only管理を要求する。
 - `stream.conf` templateにはplaceholderだけを置き、API key入りruntime fileをcommitしない。
 - GitHub Issue、README、ログ、Compose outputへtoken/API keyを貼り付けない。
 - `cloudflared tunnel list`失敗時もtokenやcredentialの値を表示しない。

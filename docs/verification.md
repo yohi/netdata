@@ -8,7 +8,7 @@
 
 実行元はAI-PC相当のUbuntu 26.04.1 LTS、kernel 7.0.0-31-generic、x86_64です。Docker 29.8.1、Compose 5.5.1を確認しました。`/sys/devices/virtual/powercap`に`intel-rapl`と`intel-rapl-mmio`、`/sys/class/hwmon`にcoretemp/NVMeを含む複数entry、WD_BLACK SN7100 1TB NVMeを確認しました。Gatewayは`192.168.1.103:2022`でSSH接続でき、Ubuntu 26.04 LTS、Docker 29.6.2、Compose 5.3.1を確認しました。
 
-Cloudflare API token/origin certificateは取得していませんが、作成済みのpublic hostnameへHTTP requestを行い、Cloudflare AccessへのHTTP `302` redirectを確認しました。GatewayへChildを配置・起動し、既存のnative `cloudflared` serviceは停止・変更していません。Parent Composeのcloudflared serviceはnative serviceとの重複を避けるため今回起動していません。Netdata runtimeとGatewayの設定はGit archiveへsecretを含めず、SSH経由で配置しました。
+Cloudflare API token/origin certificateは取得していません。GatewayへChildを配置・起動し、Gatewayの既存native `cloudflared` serviceは停止・変更していません。Parent Composeからcloudflared serviceを除去し、AI-PC側の既存native serviceは未停止のままです。Tunnel originのCloudflare側変更とAI-PC native serviceの停止は未実施です。Netdata runtimeとGatewayの設定はGit archiveへsecretを含めず、SSH経由で配置しました。
 
 ## Static Validation
 
@@ -33,15 +33,15 @@ git diff --check
 AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstreamingを実測しました。
 
 - Parent container: `running`, `healthy`, restart count `0`。
-- `http://127.0.0.1:19999/api/v1/info`: HTTP `200`。
-- `192.168.1.102:19999`: connection refused。
+- `http://192.168.1.102:19999/api/v1/info`: HTTP `200`。
+- `192.168.1.102:19999`: Parent LAN dashboard bind。Gateway-only firewall enforcementは未確認。
 - `192.168.1.102:19998`: HTTP `451`。Dashboard HTMLではなくstreaming専用endpointの応答。
 - `system.cpu`: APIから30点を取得。NVMe I/O (`disk.nvme0n1`)、network、memory chart名を確認。
 - containerから`/host/sys/devices/virtual/powercap`、`/host/sys/class/hwmon`、`/host/sys/class/nvme`を確認。
 - RAPL/hwmon専用chart名は確認できなかったため、RAPL/hwmonはPASSにしない。
 - `--force-recreate`後も`running/healthy`、API HTTP `200`、`system.cpu` dataを確認。recreate前の最終sampleとrecreate後の180秒queryに重複sampleがあり、Parent named volumeのDB保持を確認。
 - 起動ログにはsystemd journalのread-only更新失敗とdebugfs無効化があった。必須dashboard/CPU/NVMe/APIは動作したが、journal/debugfsは追加権限なしの制約として記録する。
-- 既存native `cloudflared` serviceはactiveで、`https://netdata.y-ohi.com`はHTTP `302`を返した。Access認証後のdashboard表示とpolicy内容は未確認。
+- Gateway native `cloudflared` serviceはactiveだが、Tunnel originのCloudflare側変更は未実施。Access認証後のdashboard表示とpolicy内容は未確認。
 
 ## Gateway Runtime Evidence
 
@@ -49,21 +49,23 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 - Child image healthcheckはWeb UI無効化と衝突したため、`child/compose.yaml`で`/usr/sbin/netdatacli ping`へ変更した。変更後のhealthcheckとCLI pingは成功。
 - Gatewayの`127.0.0.1:19999`はconnection refused。Child Web UIが公開されていないことを確認。
 - GatewayからParent `192.168.1.102:19998`へのTCP接続に成功。
+- GatewayからParent `192.168.1.102:19999`へのDashboard API接続に成功。
 - Parent `/api/v1/charts`で`hosts_count=2`、`gateway` hostを確認。
 - Parent `/api/v1/data?chart=system.cpu&host=gateway`で直近60行を取得。Gateway streamingを実測済み。
+- AI-PCの別LANアドレス`192.168.1.202`からParent `:19999`がHTTP `200`になった。これはGateway-only firewall ruleがまだ設定されていない証拠であり、AC-003をPASSにしない。
 
 ## Requirement Coverage
 
 | Requirement | Status | Evidence / reason |
 | --- | --- | --- |
-| REQ-ARCH-001 | PASS | `parent/compose.yaml`, `child/compose.yaml`。Netdata/cloudflaredをComposeで定義。 |
-| REQ-ARCH-002 | PASS | Composeにhost package installationを含めず、docs/deployment.md。 |
+| REQ-ARCH-001 | PASS | `parent/compose.yaml`, `child/compose.yaml`。NetdataのみをComposeで定義し、cloudflaredはGateway native serviceで管理。 |
+| REQ-ARCH-002 | PASS | Composeにhost package installationを含めず、docs/deployment.md。Gatewayの既存native cloudflaredを再利用。 |
 | REQ-ARCH-003 | PASS | Compose、templates、renderer、docsをGit管理。secret/runtimeはignore。 |
 | REQ-ARCH-004 | PASS | `images.env.example`はstable manifest digest固定。 |
 | REQ-PARENT-001 | PASS | `parent/compose.yaml`のNetdata service。 |
 | REQ-PARENT-002 | PASS | Parent local collectionとstream receiver設定。runtimeで`system.cpu` chart/APIを確認。 |
 | REQ-PARENT-003 | PASS | Parent named volumes `/var/lib/netdata`等。force-recreate後もAPI/dataが維持された。 |
-| REQ-PARENT-004 | PASS | `parent/config/netdata.conf.tmpl`の現行`bind to`構文。runtimeで19999 loopback/19998 streaming bindを確認。 |
+| REQ-PARENT-004 | NOT VERIFIED | `parent/config/netdata.conf.tmpl`はParent LANの19999/19998 bind。Gateway-only firewall enforcementは未確認。 |
 | REQ-PARENT-005 | PASS | `parent/config/stream.conf.tmpl`のUUID/API/source-IP制限。Gatewayの`system.cpu` dataをParentで取得。 |
 | REQ-CHILD-001 | PASS | `child/compose.yaml`。 |
 | REQ-CHILD-002 | PASS | Child templateの`[web] mode = none`。Gatewayの19999 connection refusedを確認。 |
@@ -76,12 +78,12 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | REQ-CONT-004 | PASS | Rootlessを採用せずdocs/security.mdに理由を記載。 |
 | REQ-DOCKER-001 | NOT VERIFIED | Docker socketなしのためEngine固有container metricsは未提供。host/cgroup範囲のchartも未実測。 |
 | REQ-DOCKER-002 | PASS | direct socketを使わずproxyを将来候補として文書化。 |
-| REQ-CF-001 | PASS | `docs/deployment.md`に固定hostnameを記載。実環境routeは未変更。 |
-| REQ-CF-002 | PASS | origin `http://127.0.0.1:19999`を文書化。public hostnameはAccess redirectを返したが、認証後originは未確認。 |
-| REQ-CF-003 | PASS | Parent Composeだけにcloudflaredを定義。 |
-| REQ-CF-004 | PASS | cloudflaredはhost networkとtoken-file。 |
+| REQ-CF-001 | PASS | `docs/deployment.md`に固定hostnameを記載。Gateway native Tunnel routeは未変更。 |
+| REQ-CF-002 | NOT VERIFIED | origin `http://192.168.1.102:19999`を文書化。Cloudflare側origin変更と認証後originは未確認。 |
+| REQ-CF-003 | PASS | Parent/Child Composeにcloudflaredを定義せず、Gateway native serviceを使用。 |
+| REQ-CF-004 | NOT VERIFIED | Gateway native cloudflaredのsystemd/token管理は既存状態を確認したが、Netdata origin routeは未確認。 |
 | REQ-CF-005 | PASS | Composeにportsがなく、Tunnel outbound方式。Internet scanは未検証。 |
-| REQ-CF-006 | PASS | Access先行手順とbypass禁止を文書化。Access設定自体はBLOCKED。 |
+| REQ-CF-006 | NOT VERIFIED | Access先行手順とbypass禁止を文書化。Tunnel origin/policy実設定は未確認。 |
 | REQ-POWER-001 | NOT VERIFIED | AI-PCにpowercap pathはあるがNetdata Watts chart未実測。Gatewayは未接続。 |
 | REQ-POWER-002 | PASS | CPU Package Powerを全体消費電力と扱わない説明。 |
 | REQ-POWER-003 | PASS | Smart Plug/UPS/PDUを初期scope外と記載。 |
@@ -89,7 +91,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | REQ-DATA-002 | PASS | Parent Tier 0 30d target。実Retention chartは未検証。 |
 | REQ-DATA-003 | PASS | Parent DB directoriesをCompose lifecycleから分離し、force-recreate後のdata APIを確認。 |
 | REQ-HA-001 | NOT VERIFIED | 設計上Gateway機能へ依存しないがParent停止試験は未実施。 |
-| REQ-HA-002 | NOT VERIFIED | cloudflared独立serviceだが停止試験は未実施。 |
+| REQ-HA-002 | NOT VERIFIED | Gateway native cloudflared独立serviceだが停止試験は未実施。 |
 | REQ-HA-003 | PASS | servicesに`restart: unless-stopped`。host rebootは未検証。 |
 | REQ-PERF-001 | NOT VERIFIED | Gateway実機負荷を測定していない。 |
 | REQ-PERF-002 | PASS | Childへ不要な公開機能を追加していない。 |
@@ -100,9 +102,9 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 
 | Acceptance | Status | Evidence / reason |
 | --- | --- | --- |
-| AC-001 | NOT VERIFIED | `https://netdata.y-ohi.com`はHTTP `302`でAccessへredirectしたが、認証後dashboard表示は未確認。 |
+| AC-001 | BLOCKED | Gateway native Tunnelのorigin変更が未実施で、公開URLのNetdata routeを確認できない。 |
 | AC-002 | NOT VERIFIED | Access policyのidentity条件を実環境で確認していない。 |
-| AC-003 | PASS | AI-PC runtimeで`192.168.1.102:19999`がconnection refused。 |
+| AC-003 | BLOCKED | Parent dashboardは`192.168.1.102:19999`へbindしたが、Gateway-only firewall rule未設定。別LANアドレス`192.168.1.202`からHTTP `200`を確認。 |
 | AC-004 | NOT VERIFIED | Internetからのport probe未実施。Composeはportsなし。 |
 | AC-005 | PASS | GatewayからParent TCP/19998へ接続し、Parentで`host=gateway`の`system.cpu` data 60行を取得。 |
 | AC-006 | PASS | Child Composeにport公開なし、`[web] mode = none`、Gateway 19999 connection refused。 |
@@ -113,7 +115,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | AC-011 | NOT VERIFIED | Parent停止時のGateway routing/DNS/DHCP試験未実施。 |
 | AC-012 | NOT VERIFIED | Gatewayのhardware-specific chartは今回未確認。 |
 | AC-013 | NOT VERIFIED | Host reboot試験未実施。 |
-| AC-014 | BLOCKED | native cloudflared 2026.9.1が作業前から存在し、今回削除や変更はしていない。Netdata native packageは未確認。 |
+| AC-014 | NOT VERIFIED | Gateway native cloudflaredは既存のまま。AI-PC native serviceの停止とGateway origin route変更は未実施。 |
 
 ## Failure Tests
 
@@ -125,5 +127,5 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 未実施:
 
 - Parent stop/restartとGateway routing/DNS/DHCP継続。
-- cloudflared stopと外部UIだけの停止。
+- Gateway native cloudflared stopと外部UIだけの停止。
 - Gateway/AI-PC host reboot後の自動復旧。
