@@ -1,0 +1,13 @@
+[global]
+    hostname = __NETDATA_HOSTNAME__
+    host access prefix = /host
+
+[web]
+    mode = none
+
+[db]
+    db = dbengine
+    update every = 1
+    storage tiers = 1
+    dbengine tier 0 retention time = 2d
+    dbengine tier 0 retention size = 0
