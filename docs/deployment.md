@@ -1,31 +1,49 @@
 # Deployment
 
+[日本語](deployment.ja.md)
+
+This is the canonical English deployment guide. The Japanese file is a
+translation; use this file when the two versions differ.
+
 ## Prerequisites
 
-- Ubuntu Server、Docker Engine、Docker Compose pluginを対象ホストへ用意する。
-- AI-PCへcloudflaredを追加しない。Gatewayの既存native `cloudflared` serviceを使用する。
-- ParentのLAN IP、Gatewayの固定LAN IP、Cloudflare Tunnelの既存構成を先に確認する。
-- `parent/images.env.example`と`child/images.env.example`のdigestを対象architectureで確認する。
+- Provide Ubuntu Server, Docker Engine, and the Docker Compose plugin on both
+  target hosts.
+- Do not add `cloudflared` to the AI-PC. Use the existing native
+  `cloudflared` service on the Gateway.
+- Confirm the Parent LAN IP, the Gateway's fixed LAN IP, and the existing
+  Cloudflare Tunnel configuration before deployment.
+- Verify the digest in `parent/images.env.example` and
+  `child/images.env.example` for the target architecture.
 
 ## Parent
 
-作業ディレクトリをリポジトリのルートとする。
+Run the following commands from the repository root on the Parent host.
 
 ```bash
 cp parent/images.env.example parent/images.env
 ```
 
-Streaming API keyはUUIDとして生成し、key自体を端末へ表示しない。
+Generate the streaming API key once on the Parent host as a UUID without
+displaying the key in the terminal.
+
+Before generating the key, ensure that the Gateway has a clean checkout of the
+repository without runtime files or secrets.
 
 ```bash
-mkdir -p parent/secrets child/secrets
+mkdir -p parent/secrets
 umask 077
 uuidgen > parent/secrets/stream-api-key
-cp parent/secrets/stream-api-key child/secrets/stream-api-key
-chmod 600 parent/secrets/stream-api-key child/secrets/stream-api-key
+chmod 600 parent/secrets/stream-api-key
 ```
 
-Parent設定を生成する。値は対象LANへ置き換える。
+Transfer only this key file to the Gateway through an approved secure channel.
+Do not copy the full checkout after the key has been created. On the Gateway,
+place the received file at `child/secrets/stream-api-key` with mode `600`, then
+remove any temporary transfer copy. Do not print the key during transfer.
+
+Render the Parent configuration. Replace the example addresses with the
+addresses on the target LAN.
 
 ```bash
 NETDATA_HOSTNAME=ai-agent \
@@ -36,23 +54,28 @@ STREAM_API_KEY_FILE=parent/secrets/stream-api-key \
 ```
 
 ```bash
-./scripts/validate.sh --deployment
+./scripts/validate.sh --examples
 docker compose --env-file parent/images.env -f parent/compose.yaml config
 docker compose --env-file parent/images.env -f parent/compose.yaml up -d netdata
 docker compose --env-file parent/images.env -f parent/compose.yaml ps
 ```
 
-DashboardはParent LAN IPのTCP/19999、Child受信は同じParent LAN IPのTCP/19998です。両ポートはGateway LAN IPだけを許可し、それ以外をdenyするhost firewall ruleを、既存のUFW/nftables/firewalld方針に合わせて追加します。Firewall implementationが不明な状態で既存ruleを置換してはいけません。
+The dashboard listens on TCP/19999 and the Child receiver listens on
+TCP/19998, both on the Parent LAN IP. Add host firewall rules that allow both
+ports only from the Gateway LAN IP and deny other sources, following the
+existing UFW, nftables, or firewalld policy. Do not replace existing rules
+blindly when the active firewall implementation is unknown.
 
 ## Child
 
-Gatewayへリポジトリを配置し、Child用image envを作る。
+On the clean Gateway checkout, create the Child image environment file.
 
 ```bash
 cp child/images.env.example child/images.env
 ```
 
-Parentと同じAPI keyをGateway上のroot-only fileへ配置し、Child設定を生成する。
+Confirm that the same API key is installed in the Gateway root-only file
+`child/secrets/stream-api-key`, then render the Child configuration.
 
 ```bash
 NETDATA_HOSTNAME=gateway \
@@ -61,22 +84,40 @@ STREAM_API_KEY_FILE=child/secrets/stream-api-key \
 ./scripts/render-config.sh child
 ```
 
-起動する。
+Start the Child service.
 
 ```bash
-./scripts/validate.sh --deployment
+./scripts/validate.sh --examples
 docker compose --env-file child/images.env -f child/compose.yaml config
 docker compose --env-file child/images.env -f child/compose.yaml up -d
 docker compose --env-file child/images.env -f child/compose.yaml ps
 ```
 
-ChildはWeb UIを無効化しており、Gatewayのrouting、DNS、DHCP、firewallへ監視処理の依存を追加しない。Parent停止時もChild containerは稼働し、`stream.conf`の再接続処理を使う。
+The Child Web UI is disabled. Monitoring must not add a dependency on the
+Gateway's routing, DNS, DHCP, or firewall services. The Child container stays
+running when the Parent is unavailable and uses the reconnect behavior in
+`stream.conf`.
+
+The `--deployment` mode is a full repository check. Run it only from a
+checkout that contains both local `images.env` files and both rendered runtime
+configurations:
+
+```bash
+./scripts/validate.sh --deployment
+```
+
+On a host prepared for only one role, the role-specific `docker compose
+config` command above is the appropriate check.
 
 ## Rootless RAPL Power Collection
 
-Rootless Dockerではcontainer内rootがhostの`/sys/devices/virtual/powercap/*/energy_uj`を読めないため、Netdata標準のRAPL collectorは直接使用できない。Docker daemonをrootfulへ変更せず、host上の最小root helperがRAPL energy counterを読み、localhostのNetdata StatsDへWattsを送る。
+With rootless Docker, root inside the container cannot read the host's
+`/sys/devices/virtual/powercap/*/energy_uj`, so the standard Netdata RAPL
+collector cannot be used directly. Instead of changing the Docker daemon to
+rootful mode, a minimal root helper on the host reads the RAPL energy counter
+and sends Watts to local Netdata StatsD.
 
-AI-PCとGatewayの両方で、以下を実行する。
+Run the following on both the AI-PC and Gateway.
 
 ```bash
 sudo install -d -m 0755 /usr/local/libexec
@@ -87,28 +128,53 @@ sudo systemctl enable --now netdata-rapl-statsd.service
 systemctl is-active netdata-rapl-statsd.service
 ```
 
-Helperは外部listen socketを作らず、`127.0.0.1:8125`のStatsDへだけ送信する。Metric名は`netdata.rapl.package_watts`で、ParentではStatsD chartとして現れ、GatewayではChildからParentへstreamingされる。RAPL counterがないホストではserviceは失敗し、power chartは生成されない。
+The helper does not create an external listening socket. It only sends to
+StatsD at `127.0.0.1:8125`. The metric name is
+`netdata.rapl.package_watts`; it appears as a StatsD chart on the Parent and
+streams from the Child to the Parent. On a host without an RAPL counter, the
+service fails and no power chart is generated.
 
 ## Cloudflare
 
-既存TunnelをDashboardまたはCloudflare APIで確認し、再利用可能なら新規Tunnelを作らない。Public hostnameを有効化する前に、Cloudflare AccessのSelf-hosted applicationを作成する。cloudflaredはGatewayのnative serviceで実行し、AI-PCでは実行しない。
+Inspect the existing Tunnel in the Dashboard or through the Cloudflare API.
+Reuse it when possible instead of creating a new Tunnel. Create the
+Cloudflare Access self-hosted application before enabling the public
+hostname. Run `cloudflared` as the native Gateway service, not on the AI-PC.
 
 ```text
 Hostname: netdata.y-ohi.com
 Origin:   http://192.168.1.102:19999
 ```
 
-Access policyは許可Identityを明示したPermit policyだけにする。未認証状態でoriginへ到達可能なbypass routeを作らない。Cloudflare側の設定変更は、現在のTunnelとAccess policyを確認した後に手動で行う。今回の実装はCloudflare APIを呼び出さず、既存設定を変更しない。
+The Access policy must use an explicit Permit policy for the allowed
+identities. Do not create a bypass route that can reach the origin without
+authentication. Change Cloudflare settings manually only after confirming the
+current Tunnel and Access policy. This repository does not call the
+Cloudflare API or change existing Cloudflare settings.
 
-Gateway native `cloudflared`のtokenとsystemd unitはGatewayのroot-only管理下に置き、GitやAI-PCへコピーしない。既存serviceのoriginと管理方法を確認し、同じTunnelを別serviceで二重起動しない。
+Keep the Gateway native `cloudflared` token and systemd unit under root-only
+management on the Gateway. Do not copy them to Git or the AI-PC. Confirm the
+existing service's origin and ownership, and do not start the same Tunnel in a
+second service.
 
 ## Image Update and Rollback
 
-更新前に対象architectureのmanifestを確認し、digestを`images.env`へ反映する。
+Before an update, inspect the manifest for the target architecture and put the
+selected digest in both hosts' role-specific `images.env` files.
 
 ```bash
 docker buildx imagetools inspect netdata/netdata:stable
 docker compose --env-file parent/images.env -f parent/compose.yaml pull
+docker compose --env-file parent/images.env -f parent/compose.yaml up -d netdata
+docker compose --env-file parent/images.env -f parent/compose.yaml ps
+docker compose --env-file child/images.env -f child/compose.yaml pull
+docker compose --env-file child/images.env -f child/compose.yaml up -d
+docker compose --env-file child/images.env -f child/compose.yaml ps
 ```
 
-更新後は`docker compose ps`、localhost Dashboard、streaming、hardware collectorを確認する。問題がある場合は、変更前のdigestを`images.env`へ戻し、同じ`pull`と`up -d`で再生成する。自動更新は行わない。
+Run the Parent commands on the Parent host and the Child commands on the
+Gateway host. After each update, check `docker compose ps`, the local
+dashboard, streaming, and hardware collectors. If there is a problem, restore
+the previous digest in both role-specific `images.env` files and repeat the
+same role-specific `pull` and `up -d` commands. Do not enable automatic
+updates.

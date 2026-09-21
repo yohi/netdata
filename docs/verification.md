@@ -1,14 +1,36 @@
 # Verification and Issue #1 Coverage
 
+[日本語](verification.ja.md)
+
+This is the canonical English evidence record. A requirement is marked
+`PASS` only when an implementation file or an executed command provides
+evidence. Container startup, Gateway communication, Cloudflare Access,
+hardware charts, recreation, and reboot must remain `NOT VERIFIED` or
+`BLOCKED` until they are observed directly.
+
 ## Evidence Rules
 
-`PASS`は、この文書に記載した実装ファイルまたは実行済みコマンドの証拠がある場合だけに使う。container起動、Gateway通信、Cloudflare Access、hardware chart、recreate、rebootを実測していない項目は`NOT VERIFIED`または`BLOCKED`とする。能力pathが存在するだけではNetdata chartのPASSにしない。
+`PASS` is reserved for evidence from an implementation file or an executed
+command recorded in this document. The existence of a capability path alone
+does not prove that Netdata generated a chart.
 
 ## Gate 0 Evidence
 
-実行元はAI-PC相当のUbuntu 26.04.1 LTS、kernel 7.0.0-31-generic、x86_64です。Docker 29.8.1、Compose 5.5.1を確認しました。`/sys/devices/virtual/powercap`に`intel-rapl`と`intel-rapl-mmio`、`/sys/class/hwmon`にcoretemp/NVMeを含む複数entry、WD_BLACK SN7100 1TB NVMeを確認しました。Gatewayは`192.168.1.103:2022`でSSH接続でき、Ubuntu 26.04 LTS、Docker 29.6.2、Compose 5.3.1を確認しました。
+The test source was an AI-PC-equivalent Ubuntu 26.04.1 LTS host with kernel
+7.0.0-31-generic and x86_64 architecture. Docker 29.8.1 and Compose 5.5.1
+were confirmed. `/sys/devices/virtual/powercap` contained `intel-rapl` and
+`intel-rapl-mmio`; `/sys/class/hwmon` contained multiple entries including
+coretemp and NVMe; and a WD_BLACK SN7100 1TB NVMe device was present. The
+Gateway was reachable through SSH at `192.168.1.103:2022` and reported Ubuntu
+26.04 LTS, Docker 29.6.2, and Compose 5.3.1.
 
-Cloudflare API token/origin certificateは取得していません。GatewayへChildを配置・起動し、Gatewayの既存native `cloudflared` serviceはactiveです。Parent Composeからcloudflared serviceを除去し、AI-PC側native serviceはinactiveになりました。AI-PC firewallはGateway sourceだけを許可するiptables-nftルールを適用し、`netfilter-persistent`でenabled/activeを確認しました。Netdata runtimeとGatewayの設定はGit archiveへsecretを含めず、SSH経由で配置しました。
+No Cloudflare API token or origin certificate was obtained. The Child was
+deployed and started on the Gateway, whose existing native `cloudflared`
+service was active. The Parent Compose `cloudflared` service was removed and
+the AI-PC native service was inactive. An AI-PC firewall rule allowing only
+the Gateway source was applied with iptables-nft and enabled through
+`netfilter-persistent`. Netdata runtime files and Gateway configuration were
+transferred over SSH without including secrets in the Git archive.
 
 ## Static Validation
 
@@ -17,7 +39,7 @@ bash tests/render-config.sh
 bash tests/preflight.sh
 bash tests/validate.sh
 bash tests/rapl-statsd.sh
-bash scripts/validate.sh --examples
+./scripts/validate.sh --examples
 bash scripts/preflight.sh
 docker compose --env-file parent/images.env.example -f parent/compose.yaml config
 docker compose --env-file child/images.env.example -f child/compose.yaml config
@@ -27,109 +49,137 @@ docker compose --env-file child/images.env -f child/compose.yaml config
 git diff --check
 ```
 
-上記のrenderer、preflight、validator、Compose config、ShellCheck、bash syntax、diff check、`--deployment`を通過しています。`tests/rapl-statsd.sh`も通過しています。
+The renderer, preflight, validator, Compose config, ShellCheck, Bash syntax,
+diff check, and `--deployment` checks passed. `tests/rapl-statsd.sh` also
+passed.
 
 ## Parent Runtime Evidence
 
-AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstreamingを実測しました。
+The digest-pinned Netdata Parent was started on the AI-PC, and streaming from
+the Gateway Child was observed.
 
-- Parent container: `running`, `healthy`, restart count `0`。
-- `http://192.168.1.102:19999/api/v1/info`: HTTP `200`。
-- `192.168.1.102:19999`: Parent LAN dashboard bind。Gateway-only firewall enforcementを確認。
-- `192.168.1.102:19998`: HTTP `451`。Dashboard HTMLではなくstreaming専用endpointの応答。
-- `system.cpu`: APIから30点を取得。NVMe I/O (`disk.nvme0n1`)、network、memory chart名を確認。
-- containerから`/host/sys/devices/virtual/powercap`、`/host/sys/class/hwmon`、`/host/sys/class/nvme`を確認。
-- Rootless Dockerでは標準RAPL collectorがhost `energy_uj`を読めず、debugfs pluginがpermission deniedで停止したため、host helperへ分離した。両ホストへのroot install後、Watts chart/dataを確認。
-- `--force-recreate`後も`running/healthy`、API HTTP `200`、`system.cpu` dataを確認。recreate前の最終sampleとrecreate後の180秒queryに重複sampleがあり、Parent named volumeのDB保持を確認。
-- 起動ログにはsystemd journalのread-only更新失敗とdebugfs無効化があった。必須dashboard/CPU/NVMe/APIは動作したが、journal/debugfsは追加権限なしの制約として記録する。
-- Gateway native `cloudflared` serviceはactiveだが、Tunnel originのCloudflare側変更は未実施。Access認証後のdashboard表示とpolicy内容は未確認。
+- Parent container: `running`, `healthy`, restart count `0`.
+- `http://192.168.1.102:19999/api/v1/info`: HTTP `200`.
+- `192.168.1.102:19999`: Parent LAN dashboard bind; Gateway-only firewall
+  enforcement was confirmed.
+- `192.168.1.102:19998`: HTTP `451`; the response was the streaming-only
+  endpoint, not dashboard HTML.
+- `system.cpu`: 30 data points from the API. NVMe I/O (`disk.nvme0n1`),
+  network, and memory chart names were confirmed.
+- The container exposed `/host/sys/devices/virtual/powercap`,
+  `/host/sys/class/hwmon`, and `/host/sys/class/nvme`.
+- Rootless Docker prevented the standard RAPL collector from reading host
+  `energy_uj`, and the debugfs plugin stopped with permission denied. After
+  installing the host helper on both hosts, Watts chart and data were
+  confirmed.
+- After `--force-recreate`, the container remained `running/healthy`, the API
+  returned HTTP `200`, and `system.cpu` data remained available. A sample
+  before recreation overlapped with a query 180 seconds afterward, confirming
+  that the Parent named volume retained the database.
+- Startup logs showed read-only journal update failures and debugfs disabled.
+  The required dashboard, CPU, NVMe, and API worked; journal and debugfs are
+  recorded as limitations without additional permissions.
+- The Gateway native `cloudflared` service was active, but the Cloudflare-side
+  Tunnel origin change was not performed. Authenticated Access dashboard
+  display and policy contents were not confirmed.
 
 ## Gateway Runtime Evidence
 
-- GatewayのChild container: `running`, `healthy`, restart count `0`。
-- Gatewayの`netdata-rapl-statsd.service`は`active`。StatsDは`127.0.0.1:8125`だけでlisten。
-- Child image healthcheckはWeb UI無効化と衝突したため、`child/compose.yaml`で`/usr/sbin/netdatacli ping`へ変更した。変更後のhealthcheckとCLI pingは成功。
-- Gatewayの`127.0.0.1:19999`はconnection refused。Child Web UIが公開されていないことを確認。
-- GatewayからParent `192.168.1.102:19998`へのTCP接続に成功。
-- GatewayからParent `192.168.1.102:19999`へのDashboard API接続に成功。
-- GatewayからParent `:19998`はHTTP `451`を返した。streaming専用bindの想定内応答。
-- Parent `/api/v1/charts`で`hosts_count=2`、`gateway` hostを確認。
-- Parent `/api/v1/data?chart=system.cpu&host=gateway`で直近60行を取得。Gateway streamingを実測済み。
-- AI-PCの別LANアドレス`192.168.1.202`からParent `:19999`はtimeoutになった。Gateway-only firewall ruleの適用後挙動を確認。
-- AI-PC/Gatewayの`netdata-rapl-statsd.service`は`active`。Parentに`statsd_netdata.rapl.package_watts_gauge`が生成され、直近60行のWatts dataを取得。
+- Gateway Child container: `running`, `healthy`, restart count `0`.
+- Gateway `netdata-rapl-statsd.service` was `active`; StatsD listened only on
+  `127.0.0.1:8125`.
+- The Child image healthcheck conflicted with the disabled Web UI, so
+  `child/compose.yaml` uses `/usr/sbin/netdatacli ping`. The updated
+  healthcheck and CLI ping succeeded.
+- Gateway `127.0.0.1:19999` returned connection refused, confirming that the
+  Child Web UI was not exposed.
+- The Gateway connected to Parent `192.168.1.102:19998` over TCP.
+- The Gateway connected to the Parent Dashboard API at
+  `192.168.1.102:19999`.
+- Gateway requests to Parent `:19998` returned HTTP `451`, as expected for the
+  streaming-only bind.
+- Parent `/api/v1/charts` reported `hosts_count=2` and the `gateway` host.
+- Parent `/api/v1/data?chart=system.cpu&host=gateway` returned the latest 60
+  rows. Gateway streaming was observed.
+- From the AI-PC's other LAN address, `192.168.1.202`, Parent `:19999`
+  timed out after the Gateway-only firewall rule was applied.
+- The AI-PC and Gateway `netdata-rapl-statsd.service` instances were
+  `active`. Parent created `statsd_netdata.rapl.package_watts_gauge`, and 60
+  recent Watts data rows were retrieved.
 
 ## Requirement Coverage
 
 | Requirement | Status | Evidence / reason |
 | --- | --- | --- |
-| REQ-ARCH-001 | PASS | `parent/compose.yaml`, `child/compose.yaml`。NetdataのみをComposeで定義し、cloudflaredはGateway native serviceで管理。 |
-| REQ-ARCH-002 | PASS | Composeにhost package installationを含めず、docs/deployment.md。Gatewayの既存native cloudflaredを再利用。 |
-| REQ-ARCH-003 | PASS | Compose、templates、renderer、docsをGit管理。secret/runtimeはignore。 |
-| REQ-ARCH-004 | PASS | `images.env.example`はstable manifest digest固定。 |
-| REQ-PARENT-001 | PASS | `parent/compose.yaml`のNetdata service。 |
-| REQ-PARENT-002 | PASS | Parent local collectionとstream receiver設定。runtimeで`system.cpu` chart/APIを確認。 |
-| REQ-PARENT-003 | PASS | Parent named volumes `/var/lib/netdata`等。force-recreate後もAPI/dataが維持された。 |
-| REQ-PARENT-004 | PASS | `parent/config/netdata.conf.tmpl`はParent LANの19999/19998 bind。Gateway source許可と別LAN source timeoutを確認。 |
-| REQ-PARENT-005 | PASS | `parent/config/stream.conf.tmpl`のUUID/API/source-IP制限。Gatewayの`system.cpu` dataをParentで取得。 |
-| REQ-CHILD-001 | PASS | `child/compose.yaml`。 |
-| REQ-CHILD-002 | PASS | Child templateの`[web] mode = none`。Gatewayの19999 connection refusedを確認。 |
-| REQ-CHILD-003 | PASS | Child templateのLAN `PARENT_LAN_IP:19998` destination。ParentでGateway dataを取得。 |
-| REQ-CHILD-004 | PASS | Childにrouting/DNS/DHCP/firewall依存を追加していない。故障試験は未検証。 |
-| REQ-CHILD-005 | PASS | Child Tier 0 2日と再接続設定。replication実測は未検証。 |
-| REQ-CONT-001 | PASS | Composeのhost mountはread-only。 |
-| REQ-CONT-002 | PASS | `pid: host`と`network_mode: host`。 |
-| REQ-CONT-003 | PASS | capを初期化用5つとcollector用2つに限定し、AppArmor override/socket/privilegedを除外。 |
-| REQ-CONT-004 | PASS | Rootless Dockerを採用し、RAPLのroot-only読み取りはhost helperへ分離。 |
-| REQ-DOCKER-001 | NOT VERIFIED | Docker socketなしのためEngine固有container metricsは未提供。host/cgroup範囲のchartも未実測。 |
-| REQ-DOCKER-002 | PASS | direct socketを使わずproxyを将来候補として文書化。 |
-| REQ-CF-001 | PASS | `docs/deployment.md`に固定hostnameを記載。Gateway native Tunnel routeは未変更。 |
-| REQ-CF-002 | NOT VERIFIED | origin `http://192.168.1.102:19999`を文書化。Cloudflare側origin変更と認証後originは未確認。 |
-| REQ-CF-003 | PASS | Parent/Child Composeにcloudflaredを定義せず、Gateway native serviceを使用。 |
-| REQ-CF-004 | NOT VERIFIED | Gateway native cloudflaredのsystemd/token管理は既存状態を確認したが、Netdata origin routeは未確認。 |
-| REQ-CF-005 | PASS | Composeにportsがなく、Tunnel outbound方式。Internet scanは未検証。 |
-| REQ-CF-006 | NOT VERIFIED | Access先行手順とbypass禁止を文書化。Tunnel origin/policy実設定は未確認。 |
-| REQ-POWER-001 | PASS | AI-PC/Gatewayのrootless対応helperをsystemdで起動し、Parentの`statsd_netdata.rapl.package_watts_gauge`でWatts data 60行を確認。 |
-| REQ-POWER-002 | PASS | CPU Package Powerを全体消費電力と扱わない説明。 |
-| REQ-POWER-003 | PASS | Smart Plug/UPS/PDUを初期scope外と記載。 |
-| REQ-DATA-001 | PASS | Parent named volumesとChild short DB。 |
-| REQ-DATA-002 | PASS | Parent Tier 0 30d target。実Retention chartは未検証。 |
-| REQ-DATA-003 | PASS | Parent DB directoriesをCompose lifecycleから分離し、force-recreate後のdata APIを確認。 |
-| REQ-HA-001 | NOT VERIFIED | 設計上Gateway機能へ依存しないがParent停止試験は未実施。 |
-| REQ-HA-002 | NOT VERIFIED | Gateway native cloudflared独立serviceだが停止試験は未実施。 |
-| REQ-HA-003 | PASS | servicesに`restart: unless-stopped`。host rebootは未検証。 |
-| REQ-PERF-001 | NOT VERIFIED | Gateway実機負荷を測定していない。 |
-| REQ-PERF-002 | PASS | Childへ不要な公開機能を追加していない。 |
-| REQ-PERF-003 | PASS | update every 1をtemplateに定義し、調整手順を残した。 |
-| REQ-CLOUD-001 | PASS | Self-hosted Parent/Childのみで構成し、Netdata Cloudを要求しない。 |
+| REQ-ARCH-001 | PASS | `parent/compose.yaml` and `child/compose.yaml` define only Netdata; `cloudflared` is managed by the Gateway native service. |
+| REQ-ARCH-002 | PASS | Compose does not install host packages; `docs/deployment.md` records reuse of the existing Gateway native `cloudflared`. |
+| REQ-ARCH-003 | PASS | Compose, templates, renderer, and docs are tracked; secrets and runtime files are ignored. |
+| REQ-ARCH-004 | PASS | `images.env.example` pins the stable manifest by digest. |
+| REQ-PARENT-001 | PASS | Parent Netdata service is defined in `parent/compose.yaml`. |
+| REQ-PARENT-002 | PASS | Parent local collection and stream receiver configuration; `system.cpu` chart and API data were observed. |
+| REQ-PARENT-003 | PASS | Parent named volumes at `/var/lib/netdata` and related paths; data remained after force recreation. |
+| REQ-PARENT-004 | PASS | `parent/config/netdata.conf.tmpl` binds Parent LAN ports 19999 and 19998; Gateway source allow and other-LAN timeout were observed. |
+| REQ-PARENT-005 | PASS | `parent/config/stream.conf.tmpl` configures UUID, API key, and source-IP restriction; Gateway `system.cpu` data arrived at the Parent. |
+| REQ-CHILD-001 | PASS | `child/compose.yaml` defines the Child service. |
+| REQ-CHILD-002 | PASS | Child template uses `[web] mode = none`; Gateway port 19999 returned connection refused. |
+| REQ-CHILD-003 | PASS | Child destination is `PARENT_LAN_IP:19998`; Parent returned Gateway data. |
+| REQ-CHILD-004 | PASS | Child adds no routing, DNS, DHCP, or firewall dependency; failure test remains unverified. |
+| REQ-CHILD-005 | PASS | Child Tier 0 is two days and reconnect settings are present; replication was not measured. |
+| REQ-CONT-001 | PASS | Compose host mounts are read-only. |
+| REQ-CONT-002 | PASS | `pid: host` and `network_mode: host` are configured. |
+| REQ-CONT-003 | PASS | Five initialization capabilities and two collector capabilities are limited; AppArmor override, socket, and privileged mode are excluded. |
+| REQ-CONT-004 | PASS | Rootless Docker is used; root-only RAPL reads are isolated in the host helper. |
+| REQ-DOCKER-001 | NOT VERIFIED | Docker socket is absent, so Engine-specific container metrics are not provided; host/cgroup chart coverage was not measured. |
+| REQ-DOCKER-002 | PASS | A direct socket is not used; a proxy is documented as a future candidate. |
+| REQ-CF-001 | PASS | Fixed hostname is documented in `docs/deployment.md`; the Gateway native Tunnel route was not changed. |
+| REQ-CF-002 | NOT VERIFIED | Origin `http://192.168.1.102:19999` is documented; Cloudflare-side origin change and authenticated origin were not confirmed. |
+| REQ-CF-003 | PASS | Neither Compose file defines `cloudflared`; the Gateway native service is used. |
+| REQ-CF-004 | NOT VERIFIED | Existing Gateway native service and token management were inspected, but the Netdata origin route was not confirmed. |
+| REQ-CF-005 | PASS | Compose has no published ports and uses the outbound Tunnel model; an Internet scan was not performed. |
+| REQ-CF-006 | NOT VERIFIED | Access-first and no-bypass procedures are documented; the live Tunnel origin and policy were not confirmed. |
+| REQ-POWER-001 | PASS | Rootless-compatible helpers were active on both hosts; Parent Watts data was observed in `statsd_netdata.rapl.package_watts_gauge`. |
+| REQ-POWER-002 | PASS | Documentation distinguishes CPU package power from total wall power. |
+| REQ-POWER-003 | PASS | Smart Plug, UPS, and PDU measurements are outside the initial scope. |
+| REQ-DATA-001 | PASS | Parent named volumes and Child short-lived database configuration are present. |
+| REQ-DATA-002 | PASS | Parent Tier 0 target is 30 days; actual retention chart behavior was not measured. |
+| REQ-DATA-003 | PASS | Parent DB directories are separated from Compose lifecycle; data API survived force recreation. |
+| REQ-HA-001 | NOT VERIFIED | Gateway independence is a design property, but Parent-stop testing was not performed. |
+| REQ-HA-002 | NOT VERIFIED | Gateway native `cloudflared` is an independent service, but stop testing was not performed. |
+| REQ-HA-003 | PASS | Services use `restart: unless-stopped`; host reboot was not tested. |
+| REQ-PERF-001 | NOT VERIFIED | Gateway device load was not measured. |
+| REQ-PERF-002 | PASS | No unnecessary public functionality was added to the Child. |
+| REQ-PERF-003 | PASS | The template defines `update every 1` and records adjustment guidance. |
+| REQ-CLOUD-001 | PASS | The design uses only self-hosted Parent/Child components and does not require Netdata Cloud. |
 
 ## Acceptance Coverage
 
 | Acceptance | Status | Evidence / reason |
 | --- | --- | --- |
-| AC-001 | NOT VERIFIED | 公開URLはHTTP `302`でAccessへredirectするが、認証後dashboard表示は未確認。 |
-| AC-002 | NOT VERIFIED | Access policyのidentity条件を実環境で確認していない。 |
-| AC-003 | PASS | Parent dashboardは`192.168.1.102:19999`へbindし、Gatewayから到達、別LANアドレス`192.168.1.202`からtimeoutを確認。 |
-| AC-004 | NOT VERIFIED | Internetからのport probe未実施。Composeはportsなし。 |
-| AC-005 | PASS | GatewayからParent TCP/19998へ接続し、Parentで`host=gateway`の`system.cpu` data 60行を取得。 |
-| AC-006 | PASS | Child Composeにport公開なし、`[web] mode = none`、Gateway 19999 connection refused。 |
-| AC-007 | PASS | Parent APIのhost listに`gateway`が現れ、Gateway chart dataを取得。 |
-| AC-008 | NOT VERIFIED | AI-PC hardware chartをNetdata runtimeで未確認。 |
-| AC-009 | PASS | 両ホストのRAPL helperがactiveで、ParentにWatts chart/dataを確認。これはCPU Package/RAPL値であり、壁コンセント全体の実測ではない。 |
-| AC-010 | PASS | Parent force-recreate後もhealth/API/dataが維持され、named volumeが残った。 |
-| AC-011 | NOT VERIFIED | Parent停止時のGateway routing/DNS/DHCP試験未実施。 |
-| AC-012 | NOT VERIFIED | Gatewayのhardware-specific chartは今回未確認。 |
-| AC-013 | NOT VERIFIED | Host reboot試験未実施。 |
-| AC-014 | NOT VERIFIED | AI-PC native serviceはinactive、Gateway native serviceはactive。AI-PC package削除と認証後Cloudflare routeは未確認。 |
+| AC-001 | NOT VERIFIED | The public URL redirects with HTTP `302` to Access, but authenticated dashboard display was not confirmed. |
+| AC-002 | NOT VERIFIED | Access policy identity conditions were not confirmed in the live environment. |
+| AC-003 | PASS | Parent dashboard binds to `192.168.1.102:19999`, is reachable from the Gateway, and times out from the other LAN address `192.168.1.202`. |
+| AC-004 | NOT VERIFIED | No Internet port probe was performed; Compose has no published ports. |
+| AC-005 | PASS | Gateway connected to Parent TCP/19998 and Parent returned 60 rows of `host=gateway` `system.cpu` data. |
+| AC-006 | PASS | Child Compose has no published ports, `[web] mode = none`, and Gateway port 19999 returned connection refused. |
+| AC-007 | PASS | Parent API host list contains `gateway` and returned its chart data. |
+| AC-008 | NOT VERIFIED | AI-PC hardware charts were not confirmed through the Netdata runtime. |
+| AC-009 | PASS | Both RAPL helpers were active and Parent returned Watts data. This is CPU package/RAPL power, not total wall power. |
+| AC-010 | PASS | Parent health, API, and data remained after force recreation; named volumes persisted. |
+| AC-011 | NOT VERIFIED | Parent-stop testing for Gateway routing, DNS, and DHCP continuity was not performed. |
+| AC-012 | NOT VERIFIED | Gateway hardware-specific charts were not checked in this run. |
+| AC-013 | NOT VERIFIED | Host reboot testing was not performed. |
+| AC-014 | NOT VERIFIED | The AI-PC native service was inactive and the Gateway native service was active; AI-PC package removal and authenticated Cloudflare route were not confirmed. |
 
 ## Failure Tests
 
-実施済み:
+Completed:
 
-- Parent Compose force-recreate後のmetrics persistence。
-- Child Compose healthcheck変更後の再作成とstreaming継続。
+- Metric persistence after Parent Compose force recreation.
+- Child recreation and continued streaming after the healthcheck change.
 
-未実施:
+Not completed:
 
-- Parent stop/restartとGateway routing/DNS/DHCP継続。
-- Gateway native cloudflared stopと外部UIだけの停止。
-- Gateway/AI-PC host reboot後の自動復旧。
+- Parent stop/restart with Gateway routing, DNS, and DHCP continuity.
+- Gateway native `cloudflared` stop with only the external UI becoming
+  unavailable.
+- Gateway and AI-PC host reboot with automatic recovery.
