@@ -37,10 +37,10 @@ grep -Fq 'destination = 192.0.2.10:19998' "$child_stream"
 grep -Fq 'api key = 11111111-2222-3333-4444-555555555555' "$child_stream"
 
 unset NETDATA_RUNTIME_ROOT
-bash "$ROOT_DIR/scripts/render-config.sh" parent
-test -f "$ROOT_DIR/parent/runtime/netdata.conf"
-test -f "$ROOT_DIR/parent/runtime/stream.conf"
-rm -f "$ROOT_DIR/parent/runtime/netdata.conf" "$ROOT_DIR/parent/runtime/stream.conf"
+default_runtime="$TEST_ROOT/default-runtime"
+NETDATA_RUNTIME_ROOT="$default_runtime" bash "$ROOT_DIR/scripts/render-config.sh" parent
+test -f "$default_runtime/parent/netdata.conf"
+test -f "$default_runtime/parent/stream.conf"
 
 rm -f "$STREAM_API_KEY_FILE"
 missing_runtime="$TEST_ROOT/missing-runtime"
