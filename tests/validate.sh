@@ -35,6 +35,19 @@ if ! grep -Eq 'netdatacli[[:space:]]+ping' "$ROOT_DIR/parent/compose.yaml"; then
     exit 1
 fi
 
+for role in parent child; do
+    tracked_secret_root="$TEST_ROOT/tracked-secret-$role"
+    copy_fixture "$tracked_secret_root"
+    git -C "$tracked_secret_root" init -q
+    mkdir -p "$tracked_secret_root/$role/secrets"
+    printf '%s\n' 'forced-tracked-test-secret' > "$tracked_secret_root/$role/secrets/stream-api-key"
+    git -C "$tracked_secret_root" add -f -- "$role/secrets/stream-api-key"
+    if VALIDATE_ROOT="$tracked_secret_root" bash "$ROOT_DIR/scripts/validate.sh" --examples; then
+        printf 'tracked %s stream API key was accepted\n' "$role" >&2
+        exit 1
+    fi
+done
+
 for compose_file in "$ROOT_DIR/parent/compose.yaml" "$ROOT_DIR/child/compose.yaml"; do
     if grep -Eq '(^|[[:space:]])cloudflared([[:space:]:]|$)' "$compose_file"; then
         printf 'cloudflared service must not be defined: %s\n' "$compose_file" >&2

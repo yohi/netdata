@@ -126,7 +126,7 @@ validate_tracked_secrets() {
     tracked="$(git -C "$ROOT_DIR" ls-files)"
     while IFS= read -r path; do
         case "$path" in
-            */stream.conf|*/cloudflared-token|*/images.env)
+            */stream.conf|*/cloudflared-token|*/images.env|*/secrets/stream-api-key)
                 fail "secret-bearing runtime file is tracked: $path"
                 ;;
         esac

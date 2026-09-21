@@ -29,9 +29,13 @@ valid_ipv4() {
 }
 
 validate_key() {
-    local key_file="$1" key line_count
+    local key_file="$1" key line_count mode
     [[ -f "$key_file" && ! -L "$key_file" ]] || die 'STREAM_API_KEY_FILE must be a regular file'
     [[ -r "$key_file" ]] || die 'STREAM_API_KEY_FILE is not readable'
+    mode="$(stat -c '%a' "$key_file")"
+    mode=$((8#$mode))
+    ((mode & 0400)) || die 'STREAM_API_KEY_FILE must be readable by its owner'
+    (( (mode & 0077) == 0 )) || die 'STREAM_API_KEY_FILE must not be accessible by group or others'
 
     key="$(<"$key_file")"
     line_count="$(wc -l < "$key_file")"
