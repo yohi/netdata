@@ -15,3 +15,8 @@
 # Local test and tool output.
 /tmp/
 *.log
+
+# Local agent, review, and code index state.
+/.codegraph/
+/.justice/
+/.omo/
