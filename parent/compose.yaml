@@ -1,0 +1,55 @@
+services:
+  netdata:
+    image: ${NETDATA_IMAGE:?NETDATA_IMAGE is required}
+    container_name: netdata-parent
+    hostname: netdata-parent
+    pid: host
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    volumes:
+      - ./runtime/netdata.conf:/etc/netdata/netdata.conf:ro
+      - ./runtime/stream.conf:/etc/netdata/stream.conf:ro
+      - netdata-lib:/var/lib/netdata
+      - netdata-cache:/var/cache/netdata
+      - netdata-log:/var/log/netdata
+      - /:/host/root:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /var/log:/host/var/log:ro
+      - /run/dbus:/run/dbus:ro
+
+  cloudflared:
+    image: ${CLOUDFLARED_IMAGE:?CLOUDFLARED_IMAGE is required}
+    container_name: cloudflared-netdata
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    secrets:
+      - tunnel-token
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/tunnel-token
+
+secrets:
+  tunnel-token:
+    file: ${CLOUDFLARED_TOKEN_FILE:?CLOUDFLARED_TOKEN_FILE is required}
+
+volumes:
+  netdata-lib:
+  netdata-cache:
+  netdata-log:

@@ -1,0 +1,34 @@
+services:
+  netdata:
+    image: ${NETDATA_IMAGE:?NETDATA_IMAGE is required}
+    container_name: netdata-child
+    hostname: netdata-child
+    pid: host
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    volumes:
+      - ./runtime/netdata.conf:/etc/netdata/netdata.conf:ro
+      - ./runtime/stream.conf:/etc/netdata/stream.conf:ro
+      - netdata-lib:/var/lib/netdata
+      - netdata-cache:/var/cache/netdata
+      - netdata-log:/var/log/netdata
+      - /:/host/root:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /var/log:/host/var/log:ro
+      - /run/dbus:/run/dbus:ro
+
+volumes:
+  netdata-lib:
+  netdata-cache:
+  netdata-log:
