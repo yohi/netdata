@@ -12,6 +12,7 @@ elif [[ $# -eq 1 ]]; then
     printf 'Usage: %s [--json]\n' "${0##*/}" >&2
     exit 2
 fi
+sysfs_root="${SYSFS_ROOT:-/sys}"
 
 has_command() {
     command -v "$1" >/dev/null 2>&1
@@ -40,9 +41,9 @@ fi
 if dpkg-query -W -f='${Status}' cloudflared 2>/dev/null | grep -q 'install ok installed'; then
     native_cloudflared=true
 fi
-path_exists /sys/devices/virtual/powercap && rapl_path=true
-path_exists /sys/class/hwmon && hwmon_path=true
-path_exists /sys/class/nvme && nvme_path=true
+path_exists "$sysfs_root/devices/virtual/powercap" && rapl_path=true
+path_exists "$sysfs_root/class/hwmon" && hwmon_path=true
+path_exists "$sysfs_root/class/nvme" && nvme_path=true
 if has_command cloudflared && cloudflared tunnel list >/dev/null 2>&1; then
     cloudflare_cli_access=true
 fi
@@ -73,20 +74,21 @@ if has_command ip; then
 fi
 if "$rapl_path"; then
     printf '%s\n' 'preflight: powercap entries:'
-    compgen -G '/sys/devices/virtual/powercap/*' | while IFS= read -r path; do
+    for path in "$sysfs_root"/devices/virtual/powercap/*; do
+        [[ -e "$path" ]] || continue
         printf '  %s\n' "${path##*/}"
     done
 fi
 if "$hwmon_path"; then
     printf '%s\n' 'preflight: hwmon names:'
-    for name_file in /sys/class/hwmon/hwmon*/name; do
+    for name_file in "$sysfs_root"/class/hwmon/hwmon*/name; do
         [[ -r "$name_file" ]] || continue
         printf '  %s=%s\n' "${name_file%/name}" "$(<"$name_file")"
     done
 fi
 if "$nvme_path"; then
     printf '%s\n' 'preflight: NVMe models:'
-    for model_file in /sys/class/nvme/nvme*/model; do
+    for model_file in "$sysfs_root"/class/nvme/nvme*/model; do
         [[ -r "$model_file" ]] || continue
         printf '  %s=%s\n' "${model_file%/model}" "$(<"$model_file")"
     done
