@@ -1,0 +1,18 @@
+[global]
+    hostname = __NETDATA_HOSTNAME__
+    host access prefix = /host
+
+[web]
+    default port = 19999
+    bind to = 127.0.0.1:19999=dashboard __PARENT_LAN_IP__:19998=streaming
+
+[db]
+    db = dbengine
+    update every = 1
+    storage tiers = 3
+    dbengine tier 0 retention time = 30d
+    dbengine tier 0 retention size = 0
+    dbengine tier 1 retention time = 6mo
+    dbengine tier 1 retention size = 0
+    dbengine tier 2 retention time = 2y
+    dbengine tier 2 retention size = 0
