@@ -8,7 +8,7 @@
 
 実行元はAI-PC相当のUbuntu 26.04.1 LTS、kernel 7.0.0-31-generic、x86_64です。Docker 29.8.1、Compose 5.5.1を確認しました。`/sys/devices/virtual/powercap`に`intel-rapl`と`intel-rapl-mmio`、`/sys/class/hwmon`にcoretemp/NVMeを含む複数entry、WD_BLACK SN7100 1TB NVMeを確認しました。Gatewayは`192.168.1.103:2022`でSSH接続でき、Ubuntu 26.04 LTS、Docker 29.6.2、Compose 5.3.1を確認しました。
 
-Cloudflare API token/origin certificateは取得していません。GatewayへChildを配置・起動し、Gatewayの既存native `cloudflared` serviceは停止・変更していません。Parent Composeからcloudflared serviceを除去し、AI-PC側の既存native serviceは未停止のままです。Tunnel originのCloudflare側変更とAI-PC native serviceの停止は未実施です。Netdata runtimeとGatewayの設定はGit archiveへsecretを含めず、SSH経由で配置しました。
+Cloudflare API token/origin certificateは取得していません。GatewayへChildを配置・起動し、Gatewayの既存native `cloudflared` serviceはactiveです。Parent Composeからcloudflared serviceを除去し、AI-PC側native serviceはinactiveになりました。AI-PC firewallはGateway sourceだけを許可するiptables-nftルールを適用し、`netfilter-persistent`でenabled/activeを確認しました。Netdata runtimeとGatewayの設定はGit archiveへsecretを含めず、SSH経由で配置しました。
 
 ## Static Validation
 
@@ -50,9 +50,10 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 - Gatewayの`127.0.0.1:19999`はconnection refused。Child Web UIが公開されていないことを確認。
 - GatewayからParent `192.168.1.102:19998`へのTCP接続に成功。
 - GatewayからParent `192.168.1.102:19999`へのDashboard API接続に成功。
+- GatewayからParent `:19998`はHTTP `451`を返した。streaming専用bindの想定内応答。
 - Parent `/api/v1/charts`で`hosts_count=2`、`gateway` hostを確認。
 - Parent `/api/v1/data?chart=system.cpu&host=gateway`で直近60行を取得。Gateway streamingを実測済み。
-- AI-PCの別LANアドレス`192.168.1.202`からParent `:19999`がHTTP `200`になった。これはGateway-only firewall ruleがまだ設定されていない証拠であり、AC-003をPASSにしない。
+- AI-PCの別LANアドレス`192.168.1.202`からParent `:19999`はtimeoutになった。Gateway-only firewall ruleの適用後挙動を確認。
 
 ## Requirement Coverage
 
@@ -65,7 +66,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | REQ-PARENT-001 | PASS | `parent/compose.yaml`のNetdata service。 |
 | REQ-PARENT-002 | PASS | Parent local collectionとstream receiver設定。runtimeで`system.cpu` chart/APIを確認。 |
 | REQ-PARENT-003 | PASS | Parent named volumes `/var/lib/netdata`等。force-recreate後もAPI/dataが維持された。 |
-| REQ-PARENT-004 | NOT VERIFIED | `parent/config/netdata.conf.tmpl`はParent LANの19999/19998 bind。Gateway-only firewall enforcementは未確認。 |
+| REQ-PARENT-004 | PASS | `parent/config/netdata.conf.tmpl`はParent LANの19999/19998 bind。Gateway source許可と別LAN source timeoutを確認。 |
 | REQ-PARENT-005 | PASS | `parent/config/stream.conf.tmpl`のUUID/API/source-IP制限。Gatewayの`system.cpu` dataをParentで取得。 |
 | REQ-CHILD-001 | PASS | `child/compose.yaml`。 |
 | REQ-CHILD-002 | PASS | Child templateの`[web] mode = none`。Gatewayの19999 connection refusedを確認。 |
@@ -102,9 +103,9 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 
 | Acceptance | Status | Evidence / reason |
 | --- | --- | --- |
-| AC-001 | BLOCKED | Gateway native Tunnelのorigin変更が未実施で、公開URLのNetdata routeを確認できない。 |
+| AC-001 | NOT VERIFIED | 公開URLはHTTP `302`でAccessへredirectするが、認証後dashboard表示は未確認。 |
 | AC-002 | NOT VERIFIED | Access policyのidentity条件を実環境で確認していない。 |
-| AC-003 | BLOCKED | Parent dashboardは`192.168.1.102:19999`へbindしたが、Gateway-only firewall rule未設定。別LANアドレス`192.168.1.202`からHTTP `200`を確認。 |
+| AC-003 | PASS | Parent dashboardは`192.168.1.102:19999`へbindし、Gatewayから到達、別LANアドレス`192.168.1.202`からtimeoutを確認。 |
 | AC-004 | NOT VERIFIED | Internetからのport probe未実施。Composeはportsなし。 |
 | AC-005 | PASS | GatewayからParent TCP/19998へ接続し、Parentで`host=gateway`の`system.cpu` data 60行を取得。 |
 | AC-006 | PASS | Child Composeにport公開なし、`[web] mode = none`、Gateway 19999 connection refused。 |
@@ -115,7 +116,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | AC-011 | NOT VERIFIED | Parent停止時のGateway routing/DNS/DHCP試験未実施。 |
 | AC-012 | NOT VERIFIED | Gatewayのhardware-specific chartは今回未確認。 |
 | AC-013 | NOT VERIFIED | Host reboot試験未実施。 |
-| AC-014 | NOT VERIFIED | Gateway native cloudflaredは既存のまま。AI-PC native serviceの停止とGateway origin route変更は未実施。 |
+| AC-014 | NOT VERIFIED | AI-PC native serviceはinactive、Gateway native serviceはactive。AI-PC package削除と認証後Cloudflare routeは未確認。 |
 
 ## Failure Tests
 
