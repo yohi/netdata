@@ -5,21 +5,30 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
+copy_fixture() {
+    local destination="$1"
+    mkdir -p "$destination"
+    cp -a "$ROOT_DIR/parent" "$ROOT_DIR/child" "$ROOT_DIR/scripts" "$destination/"
+    rm -f "$destination/parent/images.env" "$destination/child/images.env"
+    rm -f "$destination"/parent/runtime/*.conf "$destination"/child/runtime/*.conf
+}
+
 if ! bash "$ROOT_DIR/scripts/validate.sh" --examples; then
     printf '%s\n' 'example validation failed' >&2
     exit 1
 fi
 
-if bash "$ROOT_DIR/scripts/validate.sh" --deployment; then
+missing_deployment_root="$TEST_ROOT/missing-deployment"
+copy_fixture "$missing_deployment_root"
+if VALIDATE_ROOT="$missing_deployment_root" bash "$ROOT_DIR/scripts/validate.sh" --deployment; then
     printf '%s\n' 'deployment validation passed without images.env' >&2
     exit 1
 fi
 
-copy_fixture() {
-    local destination="$1"
-    mkdir -p "$destination"
-    cp -a "$ROOT_DIR/parent" "$ROOT_DIR/child" "$ROOT_DIR/scripts" "$destination/"
-}
+if ! grep -Eq 'netdatacli[[:space:]]+ping' "$ROOT_DIR/child/compose.yaml"; then
+    printf '%s\n' 'child healthcheck must use netdatacli ping when Web UI is disabled' >&2
+    exit 1
+fi
 
 invalid_digest_root="$TEST_ROOT/invalid-digest"
 copy_fixture "$invalid_digest_root"

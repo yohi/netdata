@@ -34,6 +34,11 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /var/log:/host/var/log:ro
       - /run/dbus:/run/dbus:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/sbin/netdatacli ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
 volumes:
   netdata-lib:
