@@ -12,6 +12,9 @@
 
 | Item | Decision | Reason |
 | --- | --- | --- |
+| `CHOWN`/`FOWNER` | 使用 | Netdata imageがnamed volumeのruntime directoryを初期化するために限定する。 |
+| `DAC_OVERRIDE` | 使用 | Netdata imageの初期化処理がnamed volumeへアクセスするために限定する。 |
+| `SETUID`/`SETGID` | 使用 | Netdata imageがroot初期化後にnetdataユーザーへdrop privilegeするために限定する。 |
 | `SYS_PTRACE` | 使用 | Netdata公式Docker要件のlocal-listeners/process関連監視に対応する。 |
 | `SYS_ADMIN` | 使用 | Netdata公式Docker要件のcgroups/network-viewer関連監視に対応する。 |
 | `apparmor=unconfined` | 不使用 | 公式サンプルにはあるが、初期実装でruntime failureを確認していないため無条件に緩和しない。 |
@@ -19,7 +22,7 @@
 | Docker socket | 不使用 | read-only mountでもDocker APIへの強い権限になる。Docker固有metricsは初期実装の未提供範囲とする。 |
 | Rootless Docker | 採用しない | Issueのhost process/disk/cgroup監視要件と公式のrootless制約が合わない。 |
 
-`cap_drop: ALL`後に`SYS_ADMIN`と`SYS_PTRACE`だけを追加している。Netdata imageの実機起動で不足が確認された場合も、`privileged`へ拡大せず、失敗したcollectorと必要capabilityを記録して個別に再評価する。
+`cap_drop: ALL`後に、Netdata imageの初期化と公式collector要件に対応するcapabilityだけを追加している。Netdata imageの実機起動で不足が確認された場合も、`privileged`へ拡大せず、失敗したcollectorと必要capabilityを記録して個別に再評価する。
 
 ## Host Mounts
 
@@ -34,6 +37,8 @@
 | `/run/dbus` | `/run/dbus` | read-only | optional systemd unit collectors |
 
 Netdata writable dataは`/var/lib/netdata`、`/var/cache/netdata`、`/var/log/netdata`のnamed volumeだけに置く。Host rootへwrite mountは行わない。
+
+`read_only: true`で必要なruntime stateはNetdata serviceの`tmpfs: /run`へ置く。これはHost filesystemへの書き込みではない。
 
 ## Docker Monitoring Policy
 

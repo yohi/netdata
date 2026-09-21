@@ -34,7 +34,8 @@ SocketをNetdataへ直接渡さず、`/containers` APIだけをproxyする。安
 
 - `/`、`/proc`、`/sys`、`/etc/passwd`、`/etc/group`、`/etc/os-release`、`/etc/localtime`、`/var/log`、`/run/dbus`をread-onlyで提供する。`host access prefix = /host`を使用する。
 - Netdataの`/var/lib/netdata`、`/var/cache/netdata`、`/var/log/netdata`はnamed volumeに分離する。
-- Netdata serviceは`SYS_PTRACE`と`SYS_ADMIN`を採用するが、各々のcollector要件をsecurity.mdに記録する。`apparmor=unconfined`は採用しない。
+- Netdata serviceは`CHOWN`、`DAC_OVERRIDE`、`FOWNER`、`SETUID`、`SETGID`をimage初期化用に、`SYS_PTRACE`と`SYS_ADMIN`をcollector用に採用する。`security.md`に各理由を記録し、`apparmor=unconfined`は採用しない。
+- `read_only: true`で必要なruntime directoryはNetdata serviceの`tmpfs: /run`へ置く。
 - `/var/run/docker.sock`はmountしない。Docker固有metricsの不足は検証結果と将来のproxy設計に記録する。
 - cloudflaredは追加capabilityなし、read-only root filesystem、token secret mountだけとする。
 

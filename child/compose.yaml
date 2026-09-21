@@ -10,8 +10,15 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
       - SYS_ADMIN
       - SYS_PTRACE
+    tmpfs:
+      - /run
     volumes:
       - ./runtime/netdata.conf:/etc/netdata/netdata.conf:ro
       - ./runtime/stream.conf:/etc/netdata/stream.conf:ro

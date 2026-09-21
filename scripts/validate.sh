@@ -128,6 +128,11 @@ validate_compose() {
         if ! docker compose --env-file "$env_file" -f "$compose_file" config >/dev/null; then
             fail "docker compose config: ${role}"
         fi
+        if [[ "$MODE" == deployment ]]; then
+            for runtime_config in "$ROOT_DIR/$role/runtime/netdata.conf" "$ROOT_DIR/$role/runtime/stream.conf"; do
+                [[ -f "$runtime_config" ]] || fail "missing runtime config: ${runtime_config#"$ROOT_DIR"/}"
+            done
+        fi
     done
 }
 

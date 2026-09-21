@@ -8,7 +8,7 @@
 
 実行元はAI-PC相当のUbuntu 26.04.1 LTS、kernel 7.0.0-31-generic、x86_64です。Docker 29.8.1、Compose 5.5.1を確認しました。`/sys/devices/virtual/powercap`に`intel-rapl`と`intel-rapl-mmio`、`/sys/class/hwmon`にcoretemp/NVMeを含む複数entry、WD_BLACK SN7100 1TB NVMeを確認しました。
 
-Gateway SSH情報はなく、Cloudflare API token/origin certificateは取得できず、既存Tunnel一覧はCLI認証エラーでした。実装中にDocker container、Firewall、Cloudflare設定、Gatewayへ変更していません。ホストには作業開始前からnative `cloudflared 2026.9.1`が存在しました。
+Gateway SSH情報はなく、Cloudflare API token/origin certificateは取得できず、既存Tunnel一覧はCLI認証エラーでした。常設のFirewall、Cloudflare設定、Gatewayへは変更していません。Parent runtime確認のため一時的にNetdata container/imageを起動・取得し、検証後にcontainerとvolumeを削除しました。ホストには作業開始前からnative `cloudflared 2026.9.1`が存在しました。
 
 ## Static Validation
 
@@ -25,6 +25,20 @@ git diff --check
 
 実装時点で上記のrenderer、preflight、validator、Compose config、ShellCheck、bash syntax、diff checkは通過しています。`--deployment`は実際のsecretとruntime `images.env`を配置した対象ホストで実行します。
 
+## Parent Runtime Evidence
+
+AI-PC上でdigest固定のNetdata imageを一時起動し、検証後にcontainer/volumeを削除しました。
+
+- Parent container: `running`, `healthy`, restart count `0`。
+- `http://127.0.0.1:19999/api/v1/info`: HTTP `200`。
+- `192.168.1.102:19999`: connection refused。
+- `192.168.1.102:19998`: HTTP `451`。Dashboard HTMLではなくstreaming専用endpointの応答。
+- `system.cpu`: APIから30点を取得。NVMe I/O (`disk.nvme0n1`)、network、memory chart名を確認。
+- containerから`/host/sys/devices/virtual/powercap`、`/host/sys/class/hwmon`、`/host/sys/class/nvme`を確認。
+- RAPL/hwmon専用chart名は確認できなかったため、RAPL/hwmonはPASSにしない。
+- `--force-recreate`後も`running/healthy`、API HTTP `200`、`system.cpu` dataを確認。recreate前の最終sampleとrecreate後の180秒queryに重複sampleがあり、Parent named volumeのDB保持を確認。
+- 起動ログにはsystemd journalのread-only更新失敗とdebugfs無効化があった。必須dashboard/CPU/NVMe/APIは動作したが、journal/debugfsは追加権限なしの制約として記録する。
+
 ## Requirement Coverage
 
 | Requirement | Status | Evidence / reason |
@@ -34,9 +48,9 @@ git diff --check
 | REQ-ARCH-003 | PASS | Compose、templates、renderer、docsをGit管理。secret/runtimeはignore。 |
 | REQ-ARCH-004 | PASS | `images.env.example`はstable manifest digest固定。 |
 | REQ-PARENT-001 | PASS | `parent/compose.yaml`のNetdata service。 |
-| REQ-PARENT-002 | PASS | Parent local collectionとstream receiver設定。runtime観測は未検証。 |
-| REQ-PARENT-003 | PASS | Parent named volumes `/var/lib/netdata`等。履歴保持の再生成実測は未検証。 |
-| REQ-PARENT-004 | PASS | `parent/config/netdata.conf.tmpl`の現行`bind to`構文。bind runtimeは未検証。 |
+| REQ-PARENT-002 | PASS | Parent local collectionとstream receiver設定。runtimeで`system.cpu` chart/APIを確認。 |
+| REQ-PARENT-003 | PASS | Parent named volumes `/var/lib/netdata`等。force-recreate後もAPI/dataが維持された。 |
+| REQ-PARENT-004 | PASS | `parent/config/netdata.conf.tmpl`の現行`bind to`構文。runtimeで19999 loopback/19998 streaming bindを確認。 |
 | REQ-PARENT-005 | PASS | `parent/config/stream.conf.tmpl`のUUID/API/source-IP制限。stream接続は未検証。 |
 | REQ-CHILD-001 | PASS | `child/compose.yaml`。 |
 | REQ-CHILD-002 | PASS | Child templateの`[web] mode = none`。runtime到達不可は未検証。 |
@@ -45,7 +59,7 @@ git diff --check
 | REQ-CHILD-005 | PASS | Child Tier 0 2日と再接続設定。replication実測は未検証。 |
 | REQ-CONT-001 | PASS | Composeのhost mountはread-only。 |
 | REQ-CONT-002 | PASS | `pid: host`と`network_mode: host`。 |
-| REQ-CONT-003 | PASS | capを2つに限定し、AppArmor override/socket/privilegedを除外。 |
+| REQ-CONT-003 | PASS | capを初期化用5つとcollector用2つに限定し、AppArmor override/socket/privilegedを除外。 |
 | REQ-CONT-004 | PASS | Rootlessを採用せずdocs/security.mdに理由を記載。 |
 | REQ-DOCKER-001 | NOT VERIFIED | Docker socketなしのためEngine固有container metricsは未提供。host/cgroup範囲のchartも未実測。 |
 | REQ-DOCKER-002 | PASS | direct socketを使わずproxyを将来候補として文書化。 |
@@ -60,7 +74,7 @@ git diff --check
 | REQ-POWER-003 | PASS | Smart Plug/UPS/PDUを初期scope外と記載。 |
 | REQ-DATA-001 | PASS | Parent named volumesとChild short DB。 |
 | REQ-DATA-002 | PASS | Parent Tier 0 30d target。実Retention chartは未検証。 |
-| REQ-DATA-003 | PASS | Parent DB directoriesをCompose lifecycleから分離。recreateは未検証。 |
+| REQ-DATA-003 | PASS | Parent DB directoriesをCompose lifecycleから分離し、force-recreate後のdata APIを確認。 |
 | REQ-HA-001 | NOT VERIFIED | 設計上Gateway機能へ依存しないがParent停止試験は未実施。 |
 | REQ-HA-002 | NOT VERIFIED | cloudflared独立serviceだが停止試験は未実施。 |
 | REQ-HA-003 | PASS | servicesに`restart: unless-stopped`。host rebootは未検証。 |
@@ -75,14 +89,14 @@ git diff --check
 | --- | --- | --- |
 | AC-001 | BLOCKED | Cloudflare管理権限/既存routeを取得できず、公開URLを変更していない。 |
 | AC-002 | BLOCKED | Access policyを実環境で確認できない。 |
-| AC-003 | NOT VERIFIED | Parent containerを起動してLAN-IP:19999をprobeしていない。 |
+| AC-003 | PASS | AI-PC runtimeで`192.168.1.102:19999`がconnection refused。 |
 | AC-004 | NOT VERIFIED | Internetからのport probe未実施。Composeはportsなし。 |
 | AC-005 | BLOCKED | Gateway実機とstreaming接続未実施。 |
 | AC-006 | PASS | Child Composeにport公開なし、`[web] mode = none`。実container確認は未検証。 |
 | AC-007 | BLOCKED | Gateway実機未接続。 |
 | AC-008 | NOT VERIFIED | AI-PC hardware chartをNetdata runtimeで未確認。 |
 | AC-009 | NOT VERIFIED | AI-PC RAPL pathは存在するがchart未確認、Gatewayは未接続。 |
-| AC-010 | NOT VERIFIED | Parent containerのdelete/recreate試験未実施。 |
+| AC-010 | PASS | Parent force-recreate後もhealth/API/dataが維持され、named volumeが残った。 |
 | AC-011 | NOT VERIFIED | Parent停止時のGateway routing/DNS/DHCP試験未実施。 |
 | AC-012 | BLOCKED | Gateway実機未接続。 |
 | AC-013 | NOT VERIFIED | Host reboot試験未実施。 |

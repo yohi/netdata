@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUNTIME_ROOT="${NETDATA_RUNTIME_ROOT:-$ROOT_DIR}"
 
 die() {
     printf 'render-config: %s\n' "$1" >&2
@@ -44,6 +43,7 @@ validate_key() {
 
 render_template() {
     local template="$1" output="$2" content temp
+    [[ ! -d "$output" ]] || die "runtime output is a directory: $output"
     content="$(<"$template")"
     content="${content//__NETDATA_HOSTNAME__/$NETDATA_HOSTNAME}"
     content="${content//__PARENT_LAN_IP__/$PARENT_LAN_IP}"
@@ -73,7 +73,11 @@ if [[ "$role" == parent ]]; then
     valid_ipv4 "$GATEWAY_LAN_IP" || die 'GATEWAY_LAN_IP must be an IPv4 address'
 fi
 
-runtime_dir="$RUNTIME_ROOT/$role"
+if [[ -n "${NETDATA_RUNTIME_ROOT:-}" ]]; then
+    runtime_dir="$NETDATA_RUNTIME_ROOT/$role"
+else
+    runtime_dir="$ROOT_DIR/$role/runtime"
+fi
 mkdir -p "$runtime_dir"
 chmod 700 "$runtime_dir"
 render_template "$ROOT_DIR/$role/config/netdata.conf.tmpl" "$runtime_dir/netdata.conf"
