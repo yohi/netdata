@@ -16,6 +16,7 @@ Cloudflare API token/origin certificateは取得していません。GatewayへC
 bash tests/render-config.sh
 bash tests/preflight.sh
 bash tests/validate.sh
+bash tests/rapl-statsd.sh
 bash scripts/validate.sh --examples
 bash scripts/preflight.sh
 docker compose --env-file parent/images.env.example -f parent/compose.yaml config
@@ -26,7 +27,7 @@ docker compose --env-file child/images.env -f child/compose.yaml config
 git diff --check
 ```
 
-実装時点で上記のrenderer、preflight、validator、Compose config、ShellCheck、bash syntax、diff checkは通過しています。`--deployment`は実際のsecretとruntime `images.env`を配置した対象ホストで実行します。
+上記のrenderer、preflight、validator、Compose config、ShellCheck、bash syntax、diff check、`--deployment`を通過しています。`tests/rapl-statsd.sh`も通過しています。
 
 ## Parent Runtime Evidence
 
@@ -34,11 +35,11 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 
 - Parent container: `running`, `healthy`, restart count `0`。
 - `http://192.168.1.102:19999/api/v1/info`: HTTP `200`。
-- `192.168.1.102:19999`: Parent LAN dashboard bind。Gateway-only firewall enforcementは未確認。
+- `192.168.1.102:19999`: Parent LAN dashboard bind。Gateway-only firewall enforcementを確認。
 - `192.168.1.102:19998`: HTTP `451`。Dashboard HTMLではなくstreaming専用endpointの応答。
 - `system.cpu`: APIから30点を取得。NVMe I/O (`disk.nvme0n1`)、network、memory chart名を確認。
 - containerから`/host/sys/devices/virtual/powercap`、`/host/sys/class/hwmon`、`/host/sys/class/nvme`を確認。
-- RAPL/hwmon専用chart名は確認できなかったため、RAPL/hwmonはPASSにしない。
+- Rootless Dockerでは標準RAPL collectorがhost `energy_uj`を読めず、debugfs pluginがpermission deniedで停止したため、host helperへ分離した。両ホストへのroot install後、Watts chart/dataを確認。
 - `--force-recreate`後も`running/healthy`、API HTTP `200`、`system.cpu` dataを確認。recreate前の最終sampleとrecreate後の180秒queryに重複sampleがあり、Parent named volumeのDB保持を確認。
 - 起動ログにはsystemd journalのread-only更新失敗とdebugfs無効化があった。必須dashboard/CPU/NVMe/APIは動作したが、journal/debugfsは追加権限なしの制約として記録する。
 - Gateway native `cloudflared` serviceはactiveだが、Tunnel originのCloudflare側変更は未実施。Access認証後のdashboard表示とpolicy内容は未確認。
@@ -46,6 +47,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 ## Gateway Runtime Evidence
 
 - GatewayのChild container: `running`, `healthy`, restart count `0`。
+- Gatewayの`netdata-rapl-statsd.service`は`active`。StatsDは`127.0.0.1:8125`だけでlisten。
 - Child image healthcheckはWeb UI無効化と衝突したため、`child/compose.yaml`で`/usr/sbin/netdatacli ping`へ変更した。変更後のhealthcheckとCLI pingは成功。
 - Gatewayの`127.0.0.1:19999`はconnection refused。Child Web UIが公開されていないことを確認。
 - GatewayからParent `192.168.1.102:19998`へのTCP接続に成功。
@@ -54,6 +56,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 - Parent `/api/v1/charts`で`hosts_count=2`、`gateway` hostを確認。
 - Parent `/api/v1/data?chart=system.cpu&host=gateway`で直近60行を取得。Gateway streamingを実測済み。
 - AI-PCの別LANアドレス`192.168.1.202`からParent `:19999`はtimeoutになった。Gateway-only firewall ruleの適用後挙動を確認。
+- AI-PC/Gatewayの`netdata-rapl-statsd.service`は`active`。Parentに`statsd_netdata.rapl.package_watts_gauge`が生成され、直近60行のWatts dataを取得。
 
 ## Requirement Coverage
 
@@ -76,7 +79,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | REQ-CONT-001 | PASS | Composeのhost mountはread-only。 |
 | REQ-CONT-002 | PASS | `pid: host`と`network_mode: host`。 |
 | REQ-CONT-003 | PASS | capを初期化用5つとcollector用2つに限定し、AppArmor override/socket/privilegedを除外。 |
-| REQ-CONT-004 | PASS | Rootlessを採用せずdocs/security.mdに理由を記載。 |
+| REQ-CONT-004 | PASS | Rootless Dockerを採用し、RAPLのroot-only読み取りはhost helperへ分離。 |
 | REQ-DOCKER-001 | NOT VERIFIED | Docker socketなしのためEngine固有container metricsは未提供。host/cgroup範囲のchartも未実測。 |
 | REQ-DOCKER-002 | PASS | direct socketを使わずproxyを将来候補として文書化。 |
 | REQ-CF-001 | PASS | `docs/deployment.md`に固定hostnameを記載。Gateway native Tunnel routeは未変更。 |
@@ -85,7 +88,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | REQ-CF-004 | NOT VERIFIED | Gateway native cloudflaredのsystemd/token管理は既存状態を確認したが、Netdata origin routeは未確認。 |
 | REQ-CF-005 | PASS | Composeにportsがなく、Tunnel outbound方式。Internet scanは未検証。 |
 | REQ-CF-006 | NOT VERIFIED | Access先行手順とbypass禁止を文書化。Tunnel origin/policy実設定は未確認。 |
-| REQ-POWER-001 | NOT VERIFIED | AI-PCにpowercap pathはあるがNetdata Watts chart未実測。Gatewayは未接続。 |
+| REQ-POWER-001 | PASS | AI-PC/Gatewayのrootless対応helperをsystemdで起動し、Parentの`statsd_netdata.rapl.package_watts_gauge`でWatts data 60行を確認。 |
 | REQ-POWER-002 | PASS | CPU Package Powerを全体消費電力と扱わない説明。 |
 | REQ-POWER-003 | PASS | Smart Plug/UPS/PDUを初期scope外と記載。 |
 | REQ-DATA-001 | PASS | Parent named volumesとChild short DB。 |
@@ -111,7 +114,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 | AC-006 | PASS | Child Composeにport公開なし、`[web] mode = none`、Gateway 19999 connection refused。 |
 | AC-007 | PASS | Parent APIのhost listに`gateway`が現れ、Gateway chart dataを取得。 |
 | AC-008 | NOT VERIFIED | AI-PC hardware chartをNetdata runtimeで未確認。 |
-| AC-009 | NOT VERIFIED | AI-PC RAPL pathは存在するがchart未確認。Gatewayのhardware-specific chartも未確認。 |
+| AC-009 | PASS | 両ホストのRAPL helperがactiveで、ParentにWatts chart/dataを確認。これはCPU Package/RAPL値であり、壁コンセント全体の実測ではない。 |
 | AC-010 | PASS | Parent force-recreate後もhealth/API/dataが維持され、named volumeが残った。 |
 | AC-011 | NOT VERIFIED | Parent停止時のGateway routing/DNS/DHCP試験未実施。 |
 | AC-012 | NOT VERIFIED | Gatewayのhardware-specific chartは今回未確認。 |

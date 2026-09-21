@@ -47,11 +47,14 @@ scripts/
   render-config.sh
   preflight.sh
   validate.sh
+host/
+  netdata-rapl-statsd
+  netdata-rapl-statsd.service
 ```
 
 ## Scope and Evidence
 
-このcheckoutはAI-PC上で作業しています。Parent/Child container、GatewayからParentへのstreaming、Child Web UI無効化、Cloudflare AccessへのHTTP redirectを実測済みです。Access認証後のdashboard、hardware-specific chart、reboot、failure testは未検証です。詳細は`docs/verification.md`を参照してください。
+このcheckoutはAI-PC上で作業しています。Parent/Child container、GatewayからParentへのstreaming、Child Web UI無効化、FirewallによるGateway-only Dashboard到達、RAPL helper経由のpower chartを実測済みです。Access認証後のdashboard、reboot、failure testは未検証です。詳細は`docs/verification.md`を参照してください。
 
 ## Documents
 

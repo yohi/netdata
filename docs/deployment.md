@@ -72,6 +72,23 @@ docker compose --env-file child/images.env -f child/compose.yaml ps
 
 ChildはWeb UIを無効化しており、Gatewayのrouting、DNS、DHCP、firewallへ監視処理の依存を追加しない。Parent停止時もChild containerは稼働し、`stream.conf`の再接続処理を使う。
 
+## Rootless RAPL Power Collection
+
+Rootless Dockerではcontainer内rootがhostの`/sys/devices/virtual/powercap/*/energy_uj`を読めないため、Netdata標準のRAPL collectorは直接使用できない。Docker daemonをrootfulへ変更せず、host上の最小root helperがRAPL energy counterを読み、localhostのNetdata StatsDへWattsを送る。
+
+AI-PCとGatewayの両方で、以下を実行する。
+
+```bash
+sudo install -d -m 0755 /usr/local/libexec
+sudo install -o root -g root -m 0750 host/netdata-rapl-statsd /usr/local/libexec/netdata-rapl-statsd
+sudo install -o root -g root -m 0644 host/netdata-rapl-statsd.service /etc/systemd/system/netdata-rapl-statsd.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now netdata-rapl-statsd.service
+systemctl is-active netdata-rapl-statsd.service
+```
+
+Helperは外部listen socketを作らず、`127.0.0.1:8125`のStatsDへだけ送信する。Metric名は`netdata.rapl.package_watts`で、ParentではStatsD chartとして現れ、GatewayではChildからParentへstreamingされる。RAPL counterがないホストではserviceは失敗し、power chartは生成されない。
+
 ## Cloudflare
 
 既存TunnelをDashboardまたはCloudflare APIで確認し、再利用可能なら新規Tunnelを作らない。Public hostnameを有効化する前に、Cloudflare AccessのSelf-hosted applicationを作成する。cloudflaredはGatewayのnative serviceで実行し、AI-PCでは実行しない。

@@ -2,7 +2,7 @@
 
 ## Threat Surface
 
-- Netdata dashboardはhost loopbackだけで待ち受け、LAN/Internetへ直接公開しない。
+- Netdata dashboardはParent LAN IPで待ち受け、Gateway sourceだけをhost firewallで許可し、Internetへ直接公開しない。
 - Netdata streamingはParent LAN IPのTCP/19998だけで、Child API keyとGateway IP制限を併用する。
 - 外部Web UIはCloudflare Accessを先に通過したCloudflare Tunnelだけを使う。
 - Gatewayのnative `cloudflared`だけがCloudflare Tunnel connectorを担当し、reverse proxy、公開Child Web UI、Parent DBは配置しない。
@@ -20,9 +20,9 @@
 | `apparmor=unconfined` | 不使用 | 公式サンプルにはあるが、初期実装でruntime failureを確認していないため無条件に緩和しない。 |
 | `privileged: true` | 不使用 | 必須要件に対応する根拠がなく、capability追加で代替する。 |
 | Docker socket | 不使用 | read-only mountでもDocker APIへの強い権限になる。Docker固有metricsは初期実装の未提供範囲とする。 |
-| Rootless Docker | 採用しない | Issueのhost process/disk/cgroup監視要件と公式のrootless制約が合わない。 |
+| Rootless Docker | 採用 | RAPLのroot-only sysfs読み取りはhost helperへ分離し、Docker daemonをrootfulにしない。 |
 
-`cap_drop: ALL`後に、Netdata imageの初期化と公式collector要件に対応するcapabilityだけを追加している。Netdata imageの実機起動で不足が確認された場合も、`privileged`へ拡大せず、失敗したcollectorと必要capabilityを記録して個別に再評価する。
+`cap_drop: ALL`後に、Netdata imageの初期化と公式collector要件に対応するcapabilityだけを追加している。RAPLのhost-only権限はcontainerへ拡大せず、`host/netdata-rapl-statsd`のroot helperへ限定する。
 
 ## Host Mounts
 
@@ -39,6 +39,10 @@
 Netdata writable dataは`/var/lib/netdata`、`/var/cache/netdata`、`/var/log/netdata`のnamed volumeだけに置く。Host rootへwrite mountは行わない。
 
 `read_only: true`で必要なruntime stateはNetdata serviceの`tmpfs: /run`へ置く。これはHost filesystemへの書き込みではない。
+
+## Rootless RAPL Helper
+
+`host/netdata-rapl-statsd.service`は`CAP_DAC_READ_SEARCH`だけをBoundingSetへ残したroot serviceで、RAPL energy counterを読み取り、Watts gaugeをlocalhost StatsDへ送信する。外部listen、Docker socket、host write mountは持たない。Helperの出力は測定値だけで、credentialやAPI keyを扱わない。
 
 ## Docker Monitoring Policy
 

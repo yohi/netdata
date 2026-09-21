@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RAPL_ROOT="${RAPL_ROOT:-/sys/devices/virtual/powercap}"
+STATSD_HOST="${STATSD_HOST:-127.0.0.1}"
+STATSD_PORT="${STATSD_PORT:-8125}"
+STATSD_METRIC="${STATSD_METRIC:-netdata.rapl.package_watts}"
+INTERVAL="${INTERVAL:-1}"
+
+calculate_watts() {
+    awk -v previous="$1" -v current="$2" -v elapsed="$3" -v maximum="$4" '
+        BEGIN {
+            delta = current - previous
+            if (delta < 0) delta += maximum
+            if (delta < 0 || elapsed <= 0) exit 1
+            printf "%.3f\n", delta / 1000000 / elapsed
+        }
+    '
+}
+
+read_counter() {
+    local path="$1" value
+    value="$(< "$path")"
+    [[ "$value" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$value"
+}
+
+find_zone() {
+    local zone
+    for zone in "$RAPL_ROOT"/intel-rapl/intel-rapl:*; do
+        if [[ -r "$zone/energy_uj" && -r "$zone/max_energy_range_uj" ]]; then
+            printf '%s\n' "$zone"
+            return 0
+        fi
+    done
+    return 1
+}
+
+emit_gauge() {
+    local line="$STATSD_METRIC:$1|g"
+    if [[ -n "${STATSD_OUTPUT:-}" ]]; then
+        printf '%s\n' "$line" >> "$STATSD_OUTPUT"
+    else
+        printf '%s\n' "$line" > "/dev/udp/$STATSD_HOST/$STATSD_PORT"
+    fi
+}
+
+main() {
+    local zone previous current maximum previous_at current_at elapsed watts
+    zone="$(find_zone)" || {
+        printf '%s\n' 'no readable Intel RAPL zone found' >&2
+        return 1
+    }
+    maximum="$(read_counter "$zone/max_energy_range_uj")"
+    previous="$(read_counter "$zone/energy_uj")"
+    previous_at="$(date +%s%N)"
+
+    while :; do
+        sleep "$INTERVAL"
+        current="$(read_counter "$zone/energy_uj")"
+        current_at="$(date +%s%N)"
+        elapsed="$(awk -v start="$previous_at" -v end="$current_at" 'BEGIN { printf "%.9f\n", (end - start) / 1000000000 }')"
+        watts="$(calculate_watts "$previous" "$current" "$elapsed" "$maximum")"
+        emit_gauge "$watts"
+        previous="$current"
+        previous_at="$current_at"
+    done
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
