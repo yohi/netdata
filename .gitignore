@@ -1,0 +1,17 @@
+# Runtime environment files and generated Netdata configuration.
+/parent/images.env
+/child/images.env
+/parent/secrets/*
+!/parent/secrets/.gitkeep
+!/parent/secrets/*.example
+/child/secrets/*
+!/child/secrets/.gitkeep
+!/child/secrets/*.example
+/parent/runtime/*
+!/parent/runtime/.gitkeep
+/child/runtime/*
+!/child/runtime/.gitkeep
+
+# Local test and tool output.
+/tmp/
+*.log
