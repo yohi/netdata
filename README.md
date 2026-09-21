@@ -51,7 +51,7 @@ scripts/
 
 ## Scope and Evidence
 
-このcheckoutはAI-PC上で作業しています。Docker/Compose、RAPL kernel path、hwmon、NVMeはpreflightで確認済みですが、Netdata containerのchart生成は未実測です。Gateway実機とCloudflare管理面へは接続していないため、streaming、Cloudflare Access、reboot、failure testは`NOT VERIFIED`または`BLOCKED`として記録します。詳細は`docs/verification.md`を参照してください。
+このcheckoutはAI-PC上で作業しています。Parent/Child container、GatewayからParentへのstreaming、Child Web UI無効化、Cloudflare AccessへのHTTP redirectを実測済みです。Access認証後のdashboard、hardware-specific chart、reboot、failure testは未検証です。詳細は`docs/verification.md`を参照してください。
 
 ## Documents
 

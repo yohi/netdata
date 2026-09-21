@@ -92,6 +92,8 @@ Access policyは許可Identityを明示したPermit policyだけにする。未�
 
 cloudflaredはCompose secretのtoken fileを使う。Cloudflare公式の`--token-file`は2025.4.0以降のremotely-managed Tunnelでサポートされている。
 
+対象ホストに既存のnative `cloudflared` serviceがある場合は、同じTunnelをCompose serviceと二重起動しない。先に既存serviceのoriginと管理方法を確認し、Compose管理へ移行する場合だけ、停止・置換の手順を別途承認してから実施する。
+
 ## Image Update and Rollback
 
 更新前に対象architectureのmanifestを確認し、digestを`images.env`へ反映する。
