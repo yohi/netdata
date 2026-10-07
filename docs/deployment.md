@@ -137,16 +137,17 @@ Run from the repository root:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-ln -sf "$PWD/host/netdata-watchdog.service" ~/.config/systemd/user/
+# On Parent host (use @ROLE@=child on Gateway host):
+sed -e "s|@REPO_DIR@|$PWD|g" -e "s|@ROLE@|parent|g" host/netdata-watchdog.service.template > ~/.config/systemd/user/netdata-watchdog.service
 ln -sf "$PWD/host/netdata-watchdog.timer" ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now netdata-watchdog.timer
 systemctl --user is-active netdata-watchdog.timer
 ```
 
-On the Parent host, the service unit executes `scripts/watchdog.sh parent`. On
-the Gateway (Child) host, pass `child` as the argument in the service unit or
-run without arguments to auto-detect the local container.
+On the Gateway (Child) host, set the `@ROLE@` replacement to `child` instead of
+`parent` (or run without a role argument to auto-detect the local container).
+
 
 ## Rootless RAPL Power Collection
 

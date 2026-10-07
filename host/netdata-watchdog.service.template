@@ -6,6 +6,6 @@ After=docker.service
 Type=oneshot
 Environment="PATH=%h/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="DOCKER_HOST=unix:///run/user/%U/docker.sock"
-ExecStart=/home/y_ohi/program/private/netdata/scripts/watchdog.sh parent
+ExecStart=@REPO_DIR@/scripts/watchdog.sh @ROLE@
 StandardOutput=journal
 StandardError=journal

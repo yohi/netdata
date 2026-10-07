@@ -109,14 +109,16 @@ Watchdogスクリプト（`scripts/watchdog.sh`）はコンテナのhealth状態
 
 ```bash
 mkdir -p ~/.config/systemd/user
-ln -sf "$PWD/host/netdata-watchdog.service" ~/.config/systemd/user/
+# Parentホストの場合（Gatewayホストでは @ROLE@=child）:
+sed -e "s|@REPO_DIR@|$PWD|g" -e "s|@ROLE@|parent|g" host/netdata-watchdog.service.template > ~/.config/systemd/user/netdata-watchdog.service
 ln -sf "$PWD/host/netdata-watchdog.timer" ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now netdata-watchdog.timer
 systemctl --user is-active netdata-watchdog.timer
 ```
 
-Parentホストではサービスユニットが`scripts/watchdog.sh parent`を実行します。Gateway（Child）ホストで利用する場合はサービスユニット引数を`child`とするか、引数なしで実行してローカルコンテナを自動検出させます。
+Gateway（Child）ホストで利用する場合は、`sed` の置換引数を `@ROLE@` から `child` に変更するか、引数なしで実行してローカルコンテナを自動検出させます。
+
 
 ## Rootless RAPL Power Collection
 
