@@ -176,6 +176,7 @@ Completed:
 
 - Metric persistence after Parent Compose force recreation.
 - Child recreation and continued streaming after the healthcheck change.
+- Watchdog container auto-recovery and user linger persistence (automated recovery on unhealthy/stopped status and systemd user timer execution).
 
 Not completed:
 

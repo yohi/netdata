@@ -1,0 +1,11 @@
+[Unit]
+Description=Netdata Container Watchdog and Auto-recovery
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="DOCKER_HOST=unix:///run/user/%U/docker.sock"
+ExecStart=@REPO_DIR@/scripts/watchdog.sh @ROLE@
+StandardOutput=journal
+StandardError=journal

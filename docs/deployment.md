@@ -109,6 +109,46 @@ configurations:
 On a host prepared for only one role, the role-specific `docker compose
 config` command above is the appropriate check.
 
+## Automatic Recovery and Boot Persistence
+
+With rootless Docker, ensure that the daemon starts on host boot without an
+interactive login session, and install the watchdog timer to recover from
+unhealthy containers or daemon crashes (such as Kernel OOM Killer events).
+
+### 1. Enable User Linger
+
+Run once with root privileges on the target host:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+This keeps the systemd user instance running across host reboots so Docker and
+Netdata start automatically.
+
+### 2. Install Watchdog Systemd Timer
+
+The watchdog script (`scripts/watchdog.sh`) inspects the container's health
+status periodically. If the container is stopped or reported as `unhealthy`
+(for example, when a container task is lost following a containerd crash), it
+performs a clean `compose down` and `compose up -d` to restore service.
+
+Run from the repository root:
+
+```bash
+mkdir -p ~/.config/systemd/user
+# On Parent host (use @ROLE@=child on Gateway host):
+sed -e "s|@REPO_DIR@|$PWD|g" -e "s|@ROLE@|parent|g" host/netdata-watchdog.service.template > ~/.config/systemd/user/netdata-watchdog.service
+ln -sf "$PWD/host/netdata-watchdog.timer" ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now netdata-watchdog.timer
+systemctl --user is-active netdata-watchdog.timer
+```
+
+On the Gateway (Child) host, set the `@ROLE@` replacement to `child` instead of
+`parent` (or run without a role argument to auto-detect the local container).
+
+
 ## Rootless RAPL Power Collection
 
 With rootless Docker, root inside the container cannot read the host's
