@@ -87,6 +87,37 @@ Child Web UIは無効です。監視処理はGatewayのrouting、DNS、DHCP、fi
 
 片方のroleだけを準備するhostでは、上記のrole-specificな`docker compose config` commandを使います。
 
+## 自動復旧とホスト起動時の常駐
+
+Rootless Docker環境において、ログインセッションなしでのホスト起動時自動起動を確実にし、Kernel OOM Killerやデーモン再起動などによるコンテナ異常（unhealthy / ゾンビ状態）から自動復旧させる手順です。
+
+### 1. ユーザー常駐（Linger）の有効化
+
+対象ホストでroot権限を使用して一度だけ実行します。
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+これにより、ホストPCの再起動後もユーザー未ログイン状態でsystemdユーザーインスタンスが稼働し、DockerおよびNetdataが自動起動します。
+
+### 2. Watchdog systemdタイマーの登録
+
+Watchdogスクリプト（`scripts/watchdog.sh`）はコンテナのhealth状態を定期的に監視します。コンテナが停止しているか、または`unhealthy`（containerdクラッシュ後のタスク喪失など）になっている場合、`docker compose down`と`docker compose up -d`を実行して正常復旧させます。
+
+リポジトリルートから実行します。
+
+```bash
+mkdir -p ~/.config/systemd/user
+ln -sf "$PWD/host/netdata-watchdog.service" ~/.config/systemd/user/
+ln -sf "$PWD/host/netdata-watchdog.timer" ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now netdata-watchdog.timer
+systemctl --user is-active netdata-watchdog.timer
+```
+
+Parentホストではサービスユニットが`scripts/watchdog.sh parent`を実行します。Gateway（Child）ホストで利用する場合はサービスユニット引数を`child`とするか、引数なしで実行してローカルコンテナを自動検出させます。
+
 ## Rootless RAPL Power Collection
 
 Rootless Dockerではcontainer内rootがhostの`/sys/devices/virtual/powercap/*/energy_uj`を読めないため、Netdata標準のRAPL collectorを直接使えません。Docker daemonをrootfulへ変更せず、host上の最小root helperがRAPL energy counterを読み、localhostのNetdata StatsDへWattsを送信します。

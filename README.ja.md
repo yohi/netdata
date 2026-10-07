@@ -32,6 +32,8 @@ ParentとChildは別ホストで実行します。両ホストにDocker Engine�
 - Netdata imageをdigest固定し、生成runtime configによってAPI keyをGitから分離します。
 - `privileged`、Docker socket mount、AppArmor overrideを使わないrootless Docker baselineです。
 - Host-only RAPL helperがCPU package powerをローカルNetdata StatsDへ送信します。
+- Auto-recovery watchdogスクリプトとsystemd user timerにより、コンテナ障害（containerd切断やKernel OOM Killer等）から自動復旧します。
+- systemd user lingerによるRootless Dockerのホスト起動時自動起動をサポートします。
 - Shell syntax、template、image pin、Compose、secret境界、security invariantを静的検証します。
 
 ## How It Works
@@ -94,8 +96,8 @@ git diff --check
 ```text
 parent/                 Parent Composeとtemplate
 child/                  Child Composeとtemplate
-scripts/                rendering、preflight、validation
-host/                   root RAPL helperとsystemd unit
+scripts/                rendering、preflight、validation、watchdog
+host/                   RAPL helperとsystemd unit（RAPL & watchdog）
 tests/                  shell regression test
 ```
 

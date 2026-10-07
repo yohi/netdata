@@ -131,6 +131,7 @@ AI-PC上でdigest固定のNetdata Parentを起動し、Gateway Childからのstr
 
 - Parent Compose force recreate後のmetric persistence。
 - healthcheck変更後のChild recreateとstreaming継続。
+- Watchdogによるコンテナ自動復旧とユーザー常駐（unhealthy/停止時の自動再作成およびsystemdユーザータイマー実行）。
 
 未実施:
 

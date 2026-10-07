@@ -50,6 +50,8 @@ steps to bring up healthy Parent and Child services.
 - Rootless Docker baseline without `privileged`, Docker socket mounts, or an
   AppArmor override.
 - Host-only RAPL helper that sends CPU package power to local Netdata StatsD.
+- Auto-recovery watchdog script and systemd user timer that recover unhealthy or crashed containers (e.g., following containerd disconnects or Kernel OOM Killer events).
+- Rootless Docker boot persistence via systemd user linger.
 - Static validation for shell syntax, templates, image pins, Compose files,
   secret boundaries, and security invariants.
 
@@ -128,8 +130,8 @@ The main implementation paths are:
 ```text
 parent/                 Parent Compose and templates
 child/                  Child Compose and templates
-scripts/                Rendering, preflight, and validation
-host/                   Root RAPL helper and systemd unit
+scripts/                Rendering, preflight, validation, and watchdog
+host/                   RAPL helper and systemd units (RAPL & watchdog)
 tests/                  Shell regression tests
 ```
 
